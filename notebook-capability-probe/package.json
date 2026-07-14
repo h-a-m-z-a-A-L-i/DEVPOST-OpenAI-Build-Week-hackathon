@@ -9,13 +9,46 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onCommand:notebook-capability-probe.helloWorld",
+    "onCommand:notebook-capability-probe.notebookAction",
+    "onCommand:notebook-capability-probe.runNotebookCell",
+    "onCommand:notebook-capability-probe.insertNotebookCell",
+    "onCommand:notebook-capability-probe.editNotebookCell",
+    "onCommand:notebook-capability-probe.deleteNotebookCell"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "notebook-capability-probe.helloWorld",
-        "title": "Hello World"
+        "title": "Hello World",
+        "category": "Notebook Capability Probe"
+      },
+      {
+        "command": "notebook-capability-probe.notebookAction",
+        "title": "Notebook: Action Tool",
+        "category": "Notebook Capability Probe"
+      },
+      {
+        "command": "notebook-capability-probe.runNotebookCell",
+        "title": "Notebook: Run Cell",
+        "category": "Notebook Capability Probe"
+      },
+      {
+        "command": "notebook-capability-probe.insertNotebookCell",
+        "title": "Notebook: Insert Cell",
+        "category": "Notebook Capability Probe"
+      },
+      {
+        "command": "notebook-capability-probe.editNotebookCell",
+        "title": "Notebook: Edit Cell",
+        "category": "Notebook Capability Probe"
+      },
+      {
+        "command": "notebook-capability-probe.deleteNotebookCell",
+        "title": "Notebook: Delete Cell",
+        "category": "Notebook Capability Probe"
       }
     ]
   },

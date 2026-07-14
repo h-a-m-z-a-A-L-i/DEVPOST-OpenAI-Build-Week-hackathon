@@ -1,71 +1,28 @@
-# notebook-capability-probe README
+# notebook-capability-probe
 
-This is the README for your extension "notebook-capability-probe". After writing up a brief description, we recommend including the following sections.
+This extension exposes basic notebook actions you can test manually from the Command Palette:
 
-## Features
+* `Notebook Capability Probe: Notebook: Run Cell`
+* `Notebook Capability Probe: Notebook: Insert Cell`
+* `Notebook Capability Probe: Notebook: Edit Cell`
+* `Notebook Capability Probe: Notebook: Delete Cell`
+* `Notebook Capability Probe: Notebook: Action Tool`
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+## How to test
 
-For example if there is an image subfolder under your extension project workspace:
+1. Open any notebook file such as an `.ipynb` file.
+2. Put the cursor in a cell or focus the notebook editor.
+3. Run one of the commands above from the Command Palette.
+4. For insert and edit, follow the input prompts.
 
-\!\[feature X\]\(images/feature-x.png\)
+## Behavior
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+* Run executes the active cell.
+* Insert adds a new cell after the active cell, or appends to the end when there is no active cell.
+* Edit replaces the current cell contents.
+* Delete removes the current cell.
 
-## Requirements
+## Notes
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
-
-## Extension Settings
-
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
-
-For example:
-
-This extension contributes the following settings:
-
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
-
-## Known Issues
-
-Calling out known issues can help limit users opening duplicate issues against your extension.
-
-## Release Notes
-
-Users appreciate release notes as you update your extension.
-
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
-
----
-
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+* The commands are intended for local testing inside VS Code.
+* The generic action command lets you choose the operation at runtime.
