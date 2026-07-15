@@ -19,6 +19,8 @@ It also contributes the `@notebook` chat participant. Use it in VS Code Chat wit
 
 Notebook operations are centralized in `src/notebook/notebookSdk.ts`. The manual commands and `@notebook` agent both use this SDK for cell validation, mutations, execution waiting, and output snapshots. This keeps the user interface and agent behavior on the same notebook contract.
 
+The agent-facing tool schemas live in `src/agent/agentContracts.ts`, while `src/agent/agentModel.ts` isolates the VS Code language-model adapter. A future GPT/Codex provider can implement the same model boundary without changing notebook operations or workflow states.
+
 ## How to test
 
 ### One-time setup

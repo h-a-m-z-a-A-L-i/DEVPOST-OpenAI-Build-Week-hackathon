@@ -2,81 +2,10 @@ import * as vscode from 'vscode';
 import type { NotebookToolAction } from './notebookTools';
 import { NotebookSdk } from '../notebook/notebookSdk';
 import { AgentWorkflow } from '../agent/agentWorkflow';
+import { type AgentToolInput, type AgentToolName, type AgentToolResult } from '../agent/agentContracts';
+import { VsCodeAgentModel } from '../agent/agentModel';
 
 const maxToolSteps = 12;
-
-type AgentToolInput = {
-	index?: number;
-	text?: string;
-	language?: string;
-	kind?: 'code' | 'markdown';
-	includeOutputs?: boolean;
-};
-
-type ToolResult = {
-	ok: boolean;
-	data: unknown;
-};
-
-const tools: vscode.LanguageModelChatTool[] = [
-	{
-		name: 'read_notebook',
-		description: 'Read the active notebook, one cell, and optionally its outputs. Cell indexes are zero-based.',
-		inputSchema: {
-			type: 'object',
-			properties: {
-				index: { type: 'integer', minimum: 0, description: 'Zero-based cell index. Omit to list all cells.' },
-				includeOutputs: { type: 'boolean', description: 'Include cell outputs when reading one cell.' },
-			},
-		},
-	},
-	{
-		name: 'run_cell',
-		description: 'Run one active notebook cell by zero-based index and return its execution result and outputs.',
-		inputSchema: {
-			type: 'object',
-			properties: { index: { type: 'integer', minimum: 0 } },
-			required: ['index'],
-		},
-	},
-	{
-		name: 'insert_cell',
-		description: 'Insert a code or markdown cell at a zero-based position in the active notebook.',
-		inputSchema: {
-			type: 'object',
-			properties: {
-				index: { type: 'integer', minimum: 0 },
-				text: { type: 'string' },
-				language: { type: 'string' },
-				kind: { type: 'string', enum: ['code', 'markdown'] },
-			},
-			required: ['index', 'text'],
-		},
-	},
-	{
-		name: 'edit_cell',
-		description: 'Replace the content of one active notebook cell by zero-based index.',
-		inputSchema: {
-			type: 'object',
-			properties: {
-				index: { type: 'integer', minimum: 0 },
-				text: { type: 'string' },
-				language: { type: 'string' },
-				kind: { type: 'string', enum: ['code', 'markdown'] },
-			},
-			required: ['index', 'text'],
-		},
-	},
-	{
-		name: 'delete_cell',
-		description: 'Delete one active notebook cell by zero-based index.',
-		inputSchema: {
-			type: 'object',
-			properties: { index: { type: 'integer', minimum: 0 } },
-			required: ['index'],
-		},
-	},
-];
 
 export function registerNotebookAgent(): vscode.Disposable {
 	return vscode.chat.createChatParticipant('notebook-capability-probe.agent', handleAgentRequest);
@@ -96,6 +25,7 @@ async function handleAgentRequest(
 
 	const notebookDescription = `Active notebook: ${notebook.uri.toString()}\nCell count: ${notebook.getCells().length}`;
 	const workflow = new AgentWorkflow(message => response.progress(message));
+	const model = new VsCodeAgentModel(request.model);
 	const systemInstruction = [
 		'You are a fault-tolerant notebook operator.',
 		notebookDescription,
@@ -120,10 +50,7 @@ async function handleAgentRequest(
 				return;
 			}
 
-			const result = await request.model.sendRequest(messages, {
-				justification: 'Operate on the active notebook according to the user request.',
-				tools,
-			}, token);
+			const result = await model.send(messages, token);
 			const assistantParts: Array<vscode.LanguageModelTextPart | vscode.LanguageModelToolCallPart> = [];
 			const toolCalls: vscode.LanguageModelToolCallPart[] = [];
 			let text = '';
@@ -157,7 +84,7 @@ async function handleAgentRequest(
 				const workflowError = workflow.beforeTool(call.name);
 				const toolResult = workflowError
 					? { ok: false, data: workflowError }
-					: await executeTool(notebook, call.name, call.input as AgentToolInput, token);
+					: await executeTool(notebook, call.name as AgentToolName, call.input as AgentToolInput, token);
 				toolResults.push(new vscode.LanguageModelToolResultPart(
 					call.callId,
 					[new vscode.LanguageModelTextPart(JSON.stringify(toolResult))],
@@ -196,10 +123,10 @@ function getActiveNotebook(): vscode.NotebookDocument | undefined {
 
 async function executeTool(
 	notebook: vscode.NotebookDocument,
-	name: string,
+	name: AgentToolName,
 	input: AgentToolInput,
 	token: vscode.CancellationToken,
-): Promise<ToolResult> {
+): Promise<AgentToolResult> {
 	try {
 		switch (name) {
 			case 'read_notebook':
@@ -236,14 +163,14 @@ async function runAgentCell(
 	notebook: vscode.NotebookDocument,
 	index: number | undefined,
 	token: vscode.CancellationToken,
-): Promise<ToolResult> {
+): Promise<AgentToolResult> {
 	if (index === undefined) {
 		return { ok: false, data: 'A cell index is required.' };
 	}
 	return { ok: true, data: await new NotebookSdk(notebook).runCell(index, token) };
 }
 
-async function mutateNotebook(action: NotebookToolAction, notebook: vscode.NotebookDocument, input: AgentToolInput): Promise<ToolResult> {
+async function mutateNotebook(action: NotebookToolAction, notebook: vscode.NotebookDocument, input: AgentToolInput): Promise<AgentToolResult> {
 	if (input.index === undefined || !Number.isInteger(input.index) || input.index < 0) {
 		return { ok: false, data: 'A non-negative integer cell index is required.' };
 	}
