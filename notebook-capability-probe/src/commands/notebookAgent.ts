@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { NotebookToolAction } from './notebookTools';
 import { NotebookSdk } from '../notebook/notebookSdk';
+import { AgentWorkflow } from '../agent/agentWorkflow';
 
 const maxToolSteps = 12;
 
@@ -94,6 +95,7 @@ async function handleAgentRequest(
 	}
 
 	const notebookDescription = `Active notebook: ${notebook.uri.toString()}\nCell count: ${notebook.getCells().length}`;
+	const workflow = new AgentWorkflow(message => response.progress(message));
 	const systemInstruction = [
 		'You are a fault-tolerant notebook operator.',
 		notebookDescription,
@@ -113,6 +115,7 @@ async function handleAgentRequest(
 	try {
 		for (let step = 0; step < maxToolSteps; step += 1) {
 			if (token.isCancellationRequested) {
+				workflow.cancel();
 				response.markdown('\n\nOperation cancelled.');
 				return;
 			}
@@ -136,6 +139,13 @@ async function handleAgentRequest(
 			}
 
 			if (toolCalls.length === 0) {
+				if (!workflow.canComplete()) {
+					const message = 'The agent did not complete the required read and verification steps.';
+					workflow.fail(message);
+					response.markdown(`\n\nStopped safely: ${message}`);
+					return;
+				}
+				workflow.complete();
 				response.markdown(text || 'The notebook task completed.');
 				return;
 			}
@@ -144,22 +154,30 @@ async function handleAgentRequest(
 			const toolResults: vscode.LanguageModelToolResultPart[] = [];
 			for (const call of toolCalls) {
 				response.progress(`Running ${call.name}...`);
-				const toolResult = await executeTool(notebook, call.name, call.input as AgentToolInput, token);
+				const workflowError = workflow.beforeTool(call.name);
+				const toolResult = workflowError
+					? { ok: false, data: workflowError }
+					: await executeTool(notebook, call.name, call.input as AgentToolInput, token);
 				toolResults.push(new vscode.LanguageModelToolResultPart(
 					call.callId,
 					[new vscode.LanguageModelTextPart(JSON.stringify(toolResult))],
 				));
 				if (!toolResult.ok) {
+					workflow.fail(String(toolResult.data));
 					messages.push(vscode.LanguageModelChatMessage.User(toolResults));
 					response.markdown(`\n\nStopped safely: ${String(toolResult.data)}.`);
 					return;
 				}
+				workflow.afterTool(call.name);
 			}
 			messages.push(vscode.LanguageModelChatMessage.User(toolResults));
 		}
 
-		response.markdown(`Stopped after ${maxToolSteps} tool calls to avoid an unbounded automation loop.`);
+		const message = `Stopped after ${maxToolSteps} tool calls to avoid an unbounded automation loop.`;
+		workflow.fail(message);
+		response.markdown(message);
 	} catch (error) {
+		workflow.fail(error instanceof Error ? error.message : String(error));
 		response.markdown(`Notebook agent failed safely: ${error instanceof Error ? error.message : String(error)}`);
 	}
 }
