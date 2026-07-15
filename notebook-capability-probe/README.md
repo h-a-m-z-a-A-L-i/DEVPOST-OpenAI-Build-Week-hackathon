@@ -15,6 +15,10 @@ It also contributes the `@notebook` chat participant. Use it in VS Code Chat wit
 * `@notebook insert a markdown cell after cell 2 with a short explanation`
 * `@notebook fix cell 4 using its current output, then run it again`
 
+## Architecture
+
+Notebook operations are centralized in `src/notebook/notebookSdk.ts`. The manual commands and `@notebook` agent both use this SDK for cell validation, mutations, execution waiting, and output snapshots. This keeps the user interface and agent behavior on the same notebook contract.
+
 ## How to test
 
 ### One-time setup

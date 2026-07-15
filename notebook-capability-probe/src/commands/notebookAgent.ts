@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import type { NotebookToolAction } from './notebookTools';
+import { NotebookSdk } from '../notebook/notebookSdk';
 
 const maxToolSteps = 12;
-const maxTextLength = 12000;
 
 type AgentToolInput = {
 	index?: number;
@@ -203,43 +203,15 @@ async function executeTool(
 }
 
 function readNotebook(notebook: vscode.NotebookDocument, input: AgentToolInput): unknown {
+	const sdk = new NotebookSdk(notebook);
 	if (input.index !== undefined) {
-		const cell = getCell(notebook, input.index);
-		return {
-			index: input.index,
-			kind: cell.kind === vscode.NotebookCellKind.Markup ? 'markdown' : 'code',
-			language: cell.document.languageId,
-			text: truncate(cell.document.getText()),
-			outputs: input.includeOutputs === false ? [] : readOutputs(cell),
-			execution: cell.executionSummary ?? null,
-		};
+		return sdk.readCell(input.index, input.includeOutputs !== false);
 	}
 
 	return {
 		uri: notebook.uri.toString(),
-		cells: notebook.getCells().map((cell, index) => ({
-			index,
-			kind: cell.kind === vscode.NotebookCellKind.Markup ? 'markdown' : 'code',
-			language: cell.document.languageId,
-			preview: truncate(cell.document.getText().split(/\r?\n/, 1)[0], 240),
-			outputCount: cell.outputs.length,
-		})),
+		cells: sdk.listCells(),
 	};
-}
-
-function readOutputs(cell: vscode.NotebookCell): unknown[] {
-	return cell.outputs.flatMap(output => output.items.map(item => {
-		const value = new TextDecoder().decode(item.data);
-		let data: unknown = truncate(value);
-		if (item.mime.includes('json')) {
-			try {
-				data = JSON.parse(value);
-			} catch {
-				data = truncate(value);
-			}
-		}
-		return { mime: item.mime, data };
-	}));
 }
 
 async function runAgentCell(
@@ -250,18 +222,7 @@ async function runAgentCell(
 	if (index === undefined) {
 		return { ok: false, data: 'A cell index is required.' };
 	}
-	const cell = getCell(notebook, index);
-	const previousEndTime = cell.executionSummary?.timing?.endTime;
-	await vscode.commands.executeCommand('notebook.cell.execute', {
-		document: notebook.uri,
-		ranges: [{ start: index, end: index + 1 }],
-		autoReveal: true,
-	});
-	await waitForNotebookUpdate(notebook, cell, previousEndTime, token);
-	return {
-		ok: true,
-		data: { index, execution: cell.executionSummary ?? null, outputs: readOutputs(cell) },
-	};
+	return { ok: true, data: await new NotebookSdk(notebook).runCell(index, token) };
 }
 
 async function mutateNotebook(action: NotebookToolAction, notebook: vscode.NotebookDocument, input: AgentToolInput): Promise<ToolResult> {
@@ -278,53 +239,12 @@ async function mutateNotebook(action: NotebookToolAction, notebook: vscode.Noteb
 		return { ok: false, data: `Cell index must be between 0 and ${notebook.getCells().length - 1}.` };
 	}
 
-	await vscode.commands.executeCommand('notebook-capability-probe.notebookAction', {
-		action,
-		index: input.index,
-		text: input.text,
-		language: input.language,
-		kind: input.kind,
-	});
-	return { ok: true, data: readNotebook(notebook, {}) };
-}
-
-function getCell(notebook: vscode.NotebookDocument, index: number | undefined): vscode.NotebookCell {
-	if (index === undefined || !Number.isInteger(index) || index < 0 || index >= notebook.getCells().length) {
-		throw new Error(`Cell index must be between 0 and ${Math.max(0, notebook.getCells().length - 1)}.`);
+	const sdk = new NotebookSdk(notebook);
+	if (action === 'insert') {
+		return { ok: true, data: await sdk.insertCell({ index: input.index, text: input.text!, language: input.language, kind: input.kind }) };
 	}
-	return notebook.cellAt(index);
-}
-
-async function waitForNotebookUpdate(
-	notebook: vscode.NotebookDocument,
-	cell: vscode.NotebookCell,
-	previousEndTime: number | undefined,
-	token: vscode.CancellationToken,
-): Promise<void> {
-	if (cell.executionSummary?.timing?.endTime !== undefined && cell.executionSummary.timing.endTime !== previousEndTime) {
-		return;
+	if (action === 'edit') {
+		return { ok: true, data: await sdk.editCell({ index: input.index, text: input.text!, language: input.language, kind: input.kind }) };
 	}
-
-	await new Promise<void>(resolve => {
-		let timer: ReturnType<typeof setTimeout>;
-		const disposable = vscode.workspace.onDidChangeNotebookDocument(event => {
-			if (event.notebook.uri.toString() === notebook.uri.toString()
-				&& cell.executionSummary?.timing?.endTime !== undefined
-				&& cell.executionSummary.timing.endTime !== previousEndTime) {
-				cleanup();
-			}
-		});
-		const cancellation = token.onCancellationRequested(() => cleanup());
-		timer = setTimeout(cleanup, 30000);
-		function cleanup() {
-			clearTimeout(timer);
-			disposable.dispose();
-			cancellation.dispose();
-			resolve();
-		}
-	});
-}
-
-function truncate(value: string, limit = maxTextLength): string {
-	return value.length <= limit ? value : `${value.slice(0, limit)}\n...[truncated]`;
+	return { ok: true, data: { cells: await sdk.deleteCell(input.index) } };
 }

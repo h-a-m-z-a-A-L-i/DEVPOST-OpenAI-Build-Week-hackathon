@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { NotebookSdk } from '../notebook/notebookSdk';
 
 export type NotebookToolAction = 'run' | 'insert' | 'edit' | 'delete';
 
@@ -157,11 +158,7 @@ async function runCell(notebook: vscode.NotebookDocument, index: number): Promis
 		return;
 	}
 
-	await vscode.commands.executeCommand('notebook.cell.execute', {
-		document: notebook.uri,
-		ranges: [{ start: index, end: index + 1 }],
-		autoReveal: true,
-	});
+	await new NotebookSdk(notebook).runCell(index);
 }
 
 async function deleteCell(notebook: vscode.NotebookDocument, index: number): Promise<void> {
@@ -170,9 +167,8 @@ async function deleteCell(notebook: vscode.NotebookDocument, index: number): Pro
 		return;
 	}
 
-	const workspaceEdit = new vscode.WorkspaceEdit();
-	workspaceEdit.set(notebook.uri, [vscode.NotebookEdit.deleteCells(new vscode.NotebookRange(index, index + 1))]);
-	await applyNotebookEdit(workspaceEdit, 'delete');
+	await new NotebookSdk(notebook).deleteCell(index);
+	vscode.window.showInformationMessage('Notebook cell deleted.');
 }
 
 async function editCell(notebook: vscode.NotebookDocument, index: number, args?: Partial<NotebookToolArguments>): Promise<void> {
@@ -191,17 +187,17 @@ async function editCell(notebook: vscode.NotebookDocument, index: number, args?:
 		return;
 	}
 
-	const cellKind = resolveCellKind(args?.kind, currentCell);
-	const language = args?.language ?? (cellKind === vscode.NotebookCellKind.Markup ? 'markdown' : currentCell.document.languageId);
-	const cellData = new vscode.NotebookCellData(cellKind, text, language);
-	const workspaceEdit = new vscode.WorkspaceEdit();
-	workspaceEdit.set(notebook.uri, [vscode.NotebookEdit.replaceCells(new vscode.NotebookRange(index, index + 1), [cellData])]);
-	await applyNotebookEdit(workspaceEdit, 'edit');
+	await new NotebookSdk(notebook).editCell({
+		index,
+		text,
+		language: args?.language,
+		kind: args?.kind,
+	});
+	vscode.window.showInformationMessage('Notebook cell edited.');
 }
 
 async function insertCell(notebook: vscode.NotebookDocument, index: number, hasActiveCell: boolean, args?: Partial<NotebookToolArguments>): Promise<void> {
 	const cells = notebook.getCells();
-	const currentCell = hasActiveCell && cells.length > 0 ? cells[Math.min(index, cells.length - 1)] : undefined;
 	const text = args?.text ?? await vscode.window.showInputBox({
 		prompt: 'Cell content to insert',
 		value: '',
@@ -212,32 +208,11 @@ async function insertCell(notebook: vscode.NotebookDocument, index: number, hasA
 	}
 
 	const insertIndex = Math.min(Math.max(args?.index ?? (hasActiveCell ? index + 1 : cells.length), 0), cells.length);
-	const cellKind = resolveCellKind(args?.kind, currentCell);
-	const language = args?.language ?? (cellKind === vscode.NotebookCellKind.Markup ? 'markdown' : currentCell?.document.languageId ?? 'plaintext');
-	const cellData = new vscode.NotebookCellData(cellKind, text, language);
-	const workspaceEdit = new vscode.WorkspaceEdit();
-	workspaceEdit.set(notebook.uri, [vscode.NotebookEdit.insertCells(insertIndex, [cellData])]);
-	await applyNotebookEdit(workspaceEdit, 'insert');
-}
-
-function resolveCellKind(kind: NotebookToolArguments['kind'] | undefined, currentCell?: vscode.NotebookCell): vscode.NotebookCellKind {
-	if (kind === 'markdown') {
-		return vscode.NotebookCellKind.Markup;
-	}
-
-	if (kind === 'code') {
-		return vscode.NotebookCellKind.Code;
-	}
-
-	return currentCell?.kind ?? vscode.NotebookCellKind.Code;
-}
-
-async function applyNotebookEdit(workspaceEdit: vscode.WorkspaceEdit, action: NotebookToolAction): Promise<void> {
-	const applied = await vscode.workspace.applyEdit(workspaceEdit);
-	if (!applied) {
-		vscode.window.showErrorMessage(`Failed to ${action} notebook cell.`);
-		return;
-	}
-
-	vscode.window.showInformationMessage(`Notebook cell ${action}ed.`);
+	await new NotebookSdk(notebook).insertCell({
+		index: insertIndex,
+		text,
+		language: args?.language,
+		kind: args?.kind,
+	});
+	vscode.window.showInformationMessage('Notebook cell inserted.');
 }
