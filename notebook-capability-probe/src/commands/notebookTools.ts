@@ -39,7 +39,10 @@ async function runNotebookAction(args?: Partial<NotebookToolArguments>) {
 	}
 
 	const { notebook } = notebookContext;
-	const currentCellIndex = resolveCellIndex(notebook, args?.index, notebookContext.index);
+	const currentCellIndex = await resolveCellIndex(notebook, args?.index, notebookContext.index, action === 'insert');
+	if (currentCellIndex === undefined) {
+		return;
+	}
 
 	switch (action) {
 		case 'run':
@@ -87,13 +90,27 @@ function getNotebookContext(): ActiveCellContext | undefined {
 
 	const activeNotebookEditor = vscode.window.activeNotebookEditor;
 	if (activeNotebookEditor) {
-		return { notebook: activeNotebookEditor.notebook };
+		return {
+			notebook: activeNotebookEditor.notebook,
+			index: activeNotebookEditor.selection.start < activeNotebookEditor.notebook.getCells().length
+				? activeNotebookEditor.selection.start
+				: undefined,
+		};
 	}
 
 	return undefined;
 }
 
-function resolveCellIndex(notebook: vscode.NotebookDocument, requestedIndex: number | undefined, activeIndex: number | undefined): number {
+async function resolveCellIndex(
+	notebook: vscode.NotebookDocument,
+	requestedIndex: number | undefined,
+	activeIndex: number | undefined,
+	isInsert: boolean,
+): Promise<number | undefined> {
+	if (notebook.getCells().length === 0) {
+		return 0;
+	}
+
 	if (requestedIndex !== undefined) {
 		return clampIndex(requestedIndex, notebook.getCells().length);
 	}
@@ -102,7 +119,28 @@ function resolveCellIndex(notebook: vscode.NotebookDocument, requestedIndex: num
 		return clampIndex(activeIndex, notebook.getCells().length);
 	}
 
-	return 0;
+	if (isInsert) {
+		return notebook.getCells().length;
+	}
+
+	return pickCellIndex(notebook);
+}
+
+async function pickCellIndex(notebook: vscode.NotebookDocument): Promise<number | undefined> {
+	if (!notebook.getCells().length) {
+		return undefined;
+	}
+
+	const picked = await vscode.window.showQuickPick(
+		notebook.getCells().map((cell, index) => ({
+			label: `${index + 1}. ${cell.kind === vscode.NotebookCellKind.Markup ? 'Markdown' : 'Code'} cell`,
+			description: cell.document.getText().split(/\r?\n/, 1)[0].slice(0, 80),
+			index,
+		})),
+		{ placeHolder: 'Choose the notebook cell to modify' },
+	);
+
+	return picked?.index;
 }
 
 function clampIndex(index: number, cellCount: number): number {

@@ -1,6 +1,7 @@
 {
   "name": "notebook-capability-probe",
   "displayName": "Notebook Capability Probe",
+  "publisher": "hamza0166768",
   "description": "Test every VS Code Notebook API capability",
   "version": "0.0.1",
   "engines": {
