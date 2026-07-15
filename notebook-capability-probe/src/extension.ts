@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { registerHelloCommand } from './commands/hello';
 import { registerNotebookToolCommands } from './commands/notebookTools';
+import { registerNotebookAgent } from './commands/notebookAgent';
 
 export function activate(context: vscode.ExtensionContext) {
 
@@ -8,7 +9,8 @@ export function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(
         registerHelloCommand(),
-        ...registerNotebookToolCommands()
+        ...registerNotebookToolCommands(),
+        registerNotebookAgent()
     );
 
 }

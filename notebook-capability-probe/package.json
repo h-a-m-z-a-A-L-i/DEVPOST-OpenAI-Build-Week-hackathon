@@ -51,6 +51,14 @@
         "title": "Notebook: Delete Cell",
         "category": "Notebook Capability Probe"
       }
+    ],
+    "chatParticipants": [
+      {
+        "id": "notebook-capability-probe.agent",
+        "name": "notebook",
+        "description": "Autonomously inspect and operate on the active notebook",
+        "isSticky": true
+      }
     ]
   },
   "scripts": {
