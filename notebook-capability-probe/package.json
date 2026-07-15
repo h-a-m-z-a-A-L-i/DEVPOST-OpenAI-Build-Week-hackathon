@@ -20,6 +20,24 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "notebookPilot",
+          "title": "NotebookPilot",
+          "icon": "$(notebook)"
+        }
+      ]
+    },
+    "views": {
+      "notebookPilot": [
+        {
+          "id": "notebookPilot.dashboard",
+          "name": "NotebookPilot",
+          "type": "webview"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "notebook-capability-probe.helloWorld",
