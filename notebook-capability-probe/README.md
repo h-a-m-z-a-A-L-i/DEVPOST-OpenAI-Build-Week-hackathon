@@ -21,6 +21,8 @@ Notebook operations are centralized in `src/notebook/notebookSdk.ts`. The manual
 
 The agent-facing tool schemas live in `src/agent/agentContracts.ts`, while `src/agent/agentModel.ts` isolates the VS Code language-model adapter. A future GPT/Codex provider can implement the same model boundary without changing notebook operations or workflow states.
 
+Agent mutations validate input, require confirmation before deletion, capture a notebook checkpoint, and roll back to that checkpoint when a verified operation fails. Only a busy execution failure is retried once; mutations are never blindly retried. Structured run events are written to the Extension Host console.
+
 ## How to test
 
 ### One-time setup

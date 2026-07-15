@@ -4,6 +4,9 @@ import { NotebookSdk } from '../notebook/notebookSdk';
 import { AgentWorkflow } from '../agent/agentWorkflow';
 import { type AgentToolInput, type AgentToolName, type AgentToolResult } from '../agent/agentContracts';
 import { VsCodeAgentModel } from '../agent/agentModel';
+import { confirmDestructiveAction, validateToolInput } from '../agent/agentSafety';
+import { AgentRunLog } from '../agent/agentRunLog';
+import { isRetryableExecutionFailure, NotebookCheckpoint } from '../agent/agentRecovery';
 
 const maxToolSteps = 12;
 
@@ -24,8 +27,10 @@ async function handleAgentRequest(
 	}
 
 	const notebookDescription = `Active notebook: ${notebook.uri.toString()}\nCell count: ${notebook.getCells().length}`;
+	const runLog = new AgentRunLog(notebook.uri.toString());
 	const workflow = new AgentWorkflow(message => response.progress(message));
 	const model = new VsCodeAgentModel(request.model);
+	let checkpoint: NotebookCheckpoint | undefined;
 	const systemInstruction = [
 		'You are a fault-tolerant notebook operator.',
 		notebookDescription,
@@ -46,6 +51,7 @@ async function handleAgentRequest(
 		for (let step = 0; step < maxToolSteps; step += 1) {
 			if (token.isCancellationRequested) {
 				workflow.cancel();
+				runLog.record({ type: 'cancelled', phase: workflow.phase });
 				response.markdown('\n\nOperation cancelled.');
 				return;
 			}
@@ -69,10 +75,12 @@ async function handleAgentRequest(
 				if (!workflow.canComplete()) {
 					const message = 'The agent did not complete the required read and verification steps.';
 					workflow.fail(message);
+					runLog.record({ type: 'failed', phase: workflow.phase, detail: message });
 					response.markdown(`\n\nStopped safely: ${message}`);
 					return;
 				}
 				workflow.complete();
+				runLog.record({ type: 'completed', phase: workflow.phase });
 				response.markdown(text || 'The notebook task completed.');
 				return;
 			}
@@ -81,30 +89,51 @@ async function handleAgentRequest(
 			const toolResults: vscode.LanguageModelToolResultPart[] = [];
 			for (const call of toolCalls) {
 				response.progress(`Running ${call.name}...`);
+				runLog.record({ type: 'tool-started', phase: workflow.phase, tool: call.name });
 				const workflowError = workflow.beforeTool(call.name);
+				const toolName = call.name as AgentToolName;
+				const toolInput = call.input as AgentToolInput;
+				const isMutation = toolName !== 'read_notebook';
+				if (!workflowError && isMutation) {
+					checkpoint = NotebookCheckpoint.capture(notebook);
+				}
 				const toolResult = workflowError
 					? { ok: false, data: workflowError }
-					: await executeTool(notebook, call.name as AgentToolName, call.input as AgentToolInput, token);
+					: await executeToolWithRetry(notebook, toolName, toolInput, token, () => response.progress('Retrying transient cell execution failure once...'));
 				toolResults.push(new vscode.LanguageModelToolResultPart(
 					call.callId,
 					[new vscode.LanguageModelTextPart(JSON.stringify(toolResult))],
 				));
 				if (!toolResult.ok) {
 					workflow.fail(String(toolResult.data));
+					runLog.record({ type: 'tool-failed', phase: workflow.phase, tool: call.name, detail: String(toolResult.data) });
+					if (checkpoint) {
+						const restored = await checkpoint.restore();
+						runLog.record({ type: 'phase', phase: workflow.phase, detail: restored ? 'Rolled back to the last checkpoint.' : 'Rollback failed; notebook may require manual undo.' });
+					}
 					messages.push(vscode.LanguageModelChatMessage.User(toolResults));
 					response.markdown(`\n\nStopped safely: ${String(toolResult.data)}.`);
 					return;
 				}
 				workflow.afterTool(call.name);
+				runLog.record({ type: 'tool-completed', phase: workflow.phase, tool: call.name });
+				if (call.name === 'read_notebook') {
+					checkpoint = undefined;
+				}
 			}
 			messages.push(vscode.LanguageModelChatMessage.User(toolResults));
 		}
 
 		const message = `Stopped after ${maxToolSteps} tool calls to avoid an unbounded automation loop.`;
 		workflow.fail(message);
+		runLog.record({ type: 'failed', phase: workflow.phase, detail: message });
 		response.markdown(message);
 	} catch (error) {
 		workflow.fail(error instanceof Error ? error.message : String(error));
+		runLog.record({ type: 'failed', phase: workflow.phase, detail: error instanceof Error ? error.message : String(error) });
+		if (checkpoint) {
+			await checkpoint.restore();
+		}
 		response.markdown(`Notebook agent failed safely: ${error instanceof Error ? error.message : String(error)}`);
 	}
 }
@@ -128,6 +157,15 @@ async function executeTool(
 	token: vscode.CancellationToken,
 ): Promise<AgentToolResult> {
 	try {
+		const safety = validateToolInput(name, input, notebook);
+		if (!safety.allowed) {
+			return { ok: false, data: safety.reason ?? 'Tool input rejected by safety policy.' };
+		}
+		if (name === 'delete_cell' && input.index !== undefined
+			&& !await confirmDestructiveAction(notebook, input.index)) {
+			return { ok: false, data: 'Cell deletion was not approved by the user.' };
+		}
+
 		switch (name) {
 			case 'read_notebook':
 				return { ok: true, data: readNotebook(notebook, input) };
@@ -145,6 +183,22 @@ async function executeTool(
 	} catch (error) {
 		return { ok: false, data: error instanceof Error ? error.message : String(error) };
 	}
+}
+
+async function executeToolWithRetry(
+	notebook: vscode.NotebookDocument,
+	name: AgentToolName,
+	input: AgentToolInput,
+	token: vscode.CancellationToken,
+	onRetry: () => void,
+): Promise<AgentToolResult> {
+	const firstResult = await executeTool(notebook, name, input, token);
+	if (firstResult.ok || name !== 'run_cell' || token.isCancellationRequested || !isRetryableExecutionFailure(firstResult.data)) {
+		return firstResult;
+	}
+
+	onRetry();
+	return executeTool(notebook, name, input, token);
 }
 
 function readNotebook(notebook: vscode.NotebookDocument, input: AgentToolInput): unknown {
