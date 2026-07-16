@@ -6,6 +6,9 @@ from typing import Any
 
 
 IGNORED_DIRECTORIES = {".git", "node_modules", ".venv", "venv", "__pycache__"}
+MAX_SOURCE_CHARS = 12000
+MAX_OUTPUT_CHARS = 8000
+MAX_CONTEXT_CHARS = 60000
 
 
 def load_dotenv() -> None:
@@ -64,7 +67,7 @@ def parse_notebook(path: Path) -> dict[str, Any]:
             "index": index,
             "type": cell.get("cell_type", "unknown"),
             "language": notebook.get("metadata", {}).get("kernelspec", {}).get("language", "python"),
-            "source": "".join(cell.get("source", [])) if isinstance(cell.get("source"), list) else cell.get("source", ""),
+            "source": truncate_text(join_value(cell.get("source", "")), MAX_SOURCE_CHARS),
             "executionCount": cell.get("execution_count"),
             "outputs": normalize_outputs(cell.get("outputs", [])),
         })
@@ -79,6 +82,25 @@ def parse_notebook(path: Path) -> dict[str, Any]:
     }
 
 
+def build_context(path: Path) -> dict[str, Any]:
+    notebook = parse_notebook(path)
+    context = {
+        **notebook,
+        "context": {
+            "maxChars": MAX_CONTEXT_CHARS,
+            "truncated": False,
+        },
+    }
+
+    serialized = json.dumps(context, ensure_ascii=False)
+    if len(serialized) <= MAX_CONTEXT_CHARS:
+        return context
+
+    context["cells"] = compact_cells(context["cells"])
+    context["context"]["truncated"] = True
+    return context
+
+
 def normalize_outputs(outputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     normalized = []
     for output in outputs:
@@ -86,9 +108,9 @@ def normalize_outputs(outputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if output.get("name"):
             item["name"] = output["name"]
         if output.get("text") is not None:
-            item["text"] = join_value(output["text"])
+            item["text"] = truncate_text(join_value(output["text"]), MAX_OUTPUT_CHARS)
         if output.get("data") is not None:
-            item["data"] = output["data"]
+            item["data"] = compact_data(output["data"])
         if output.get("ename") or output.get("evalue"):
             item["error"] = {
                 "name": output.get("ename"),
@@ -97,6 +119,46 @@ def normalize_outputs(outputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
             }
         normalized.append(item)
     return normalized
+
+
+def compact_cells(cells: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    compacted = []
+    current_size = 0
+    for cell in cells:
+        encoded = json.dumps(cell, ensure_ascii=False)
+        if compacted and current_size + len(encoded) > MAX_CONTEXT_CHARS:
+            compacted.append({
+                "index": cell["index"],
+                "type": cell["type"],
+                "source": "[omitted: context limit reached]",
+                "outputs": [],
+            })
+            continue
+        compacted.append(cell)
+        current_size += len(encoded)
+    return compacted
+
+
+def compact_data(value: Any) -> Any:
+    if isinstance(value, str):
+        return truncate_text(value, MAX_OUTPUT_CHARS)
+    if isinstance(value, (dict, list)):
+        encoded = json.dumps(value, ensure_ascii=False)
+        if len(encoded) <= MAX_OUTPUT_CHARS:
+            return value
+        return {
+            "omitted": True,
+            "reason": "output exceeded context limit",
+            "preview": truncate_text(encoded, MAX_OUTPUT_CHARS),
+        }
+    return value
+
+
+def truncate_text(value: Any, limit: int) -> str:
+    text = str(value)
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}\n...[truncated]"
 
 
 def join_value(value: Any) -> Any:

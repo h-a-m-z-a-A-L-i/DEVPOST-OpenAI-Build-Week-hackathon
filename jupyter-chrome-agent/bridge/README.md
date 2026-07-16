@@ -17,6 +17,7 @@ The bridge listens on `http://127.0.0.1:8765`.
 ```text
 http://127.0.0.1:8765/health
 http://127.0.0.1:8765/api/notebook?name=Untitled.ipynb
+http://127.0.0.1:8765/api/context?name=Untitled.ipynb
 ```
 
 The notebook name is resolved below the root reported by `python -m jupyter server list`. If multiple notebooks have the same name, the bridge returns `409` with candidate paths instead of choosing incorrectly.

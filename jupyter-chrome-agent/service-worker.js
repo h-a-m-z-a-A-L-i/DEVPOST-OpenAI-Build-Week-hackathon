@@ -146,7 +146,7 @@ async function getNotebookContext() {
     throw new Error('No active notebook has been identified.');
   }
 
-  const url = `http://127.0.0.1:8765/api/notebook?name=${encodeURIComponent(notebookName)}`;
+  const url = `http://127.0.0.1:8765/api/context?name=${encodeURIComponent(notebookName)}`;
   const response = await fetch(url);
   const payload = await response.json();
   if (!response.ok || !payload.ok) {
@@ -165,7 +165,7 @@ function conversationKey(target) {
 
 async function resolveNotebookTarget(target) {
   const notebookName = target.notebookName;
-  const url = `http://127.0.0.1:8765/api/notebook?name=${encodeURIComponent(notebookName)}`;
+  const url = `http://127.0.0.1:8765/api/context?name=${encodeURIComponent(notebookName)}`;
   try {
     const response = await fetch(url);
     const payload = await response.json();

@@ -3,7 +3,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from notebook_parser import discover_server_root, find_notebooks, parse_notebook
+from notebook_parser import build_context as build_notebook_context, discover_server_root, find_notebooks, parse_notebook
 
 
 class BridgeHandler(BaseHTTPRequestHandler):
@@ -24,11 +24,20 @@ class BridgeHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/notebook":
                 self.handle_notebook(query.get("name", [""])[0])
                 return
+            if parsed.path == "/api/context":
+                self.handle_context(query.get("name", [""])[0])
+                return
             self.respond({"ok": False, "error": "Not found"}, 404)
         except Exception as error:
             self.respond({"ok": False, "error": str(error)}, 500)
 
     def handle_notebook(self, notebook_name: str):
+        self.handle_resolved_notebook(notebook_name, use_context=False)
+
+    def handle_context(self, notebook_name: str):
+        self.handle_resolved_notebook(notebook_name, use_context=True)
+
+    def handle_resolved_notebook(self, notebook_name: str, use_context: bool):
         if not notebook_name.lower().endswith(".ipynb"):
             self.respond({"ok": False, "error": "A .ipynb notebook name is required."}, 400)
             return
@@ -46,7 +55,8 @@ class BridgeHandler(BaseHTTPRequestHandler):
             }, 409)
             return
 
-        self.respond({"ok": True, "notebook": parse_notebook(matches[0])})
+        parsed = build_notebook_context(matches[0]) if use_context else parse_notebook(matches[0])
+        self.respond({"ok": True, "notebook": parsed})
 
     def respond(self, payload, status=200):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
