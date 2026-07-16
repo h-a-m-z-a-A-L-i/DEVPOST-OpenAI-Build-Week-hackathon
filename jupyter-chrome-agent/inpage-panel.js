@@ -118,8 +118,9 @@
       const text = textarea.value.trim();
       if (!text) return;
       addMessage(text, 'user');
-      addMessage('The notebook tools will connect here next.', 'assistant');
+      addMessage('Working on the notebook...', 'assistant');
       textarea.value = '';
+      void runAgent(text);
     });
 
     let dragState;
@@ -177,5 +178,27 @@
   function getTargetKey(target) {
     if (!target) return undefined;
     return `${target.tabId}:${target.origin}:${target.notebookPath}`;
+  }
+
+  async function runAgent(prompt) {
+    const response = await chrome.runtime.sendMessage({ type: 'agent-start', prompt });
+    if (!response?.ok) {
+      addPanelMessage(response?.error ?? 'The agent failed to respond.', 'assistant');
+      return;
+    }
+    const text = response.result?.text || 'The agent completed without a final response.';
+    addPanelMessage(text, 'assistant');
+  }
+
+  function addPanelMessage(text, role) {
+    if (!shadowRoot) return;
+    const messages = shadowRoot.querySelector('.messages');
+    const message = document.createElement('div');
+    message.className = `message ${role}`;
+    message.textContent = text;
+    messages.append(message);
+    messages.scrollTop = messages.scrollHeight;
+    conversation.push({ role, text, createdAt: new Date().toISOString() });
+    void saveConversation();
   }
 })();

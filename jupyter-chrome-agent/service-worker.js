@@ -3,6 +3,8 @@ import { parseJupyterTab } from './tab-identity.js';
 const TARGET_KEY = 'activeJupyterTarget';
 const SETTINGS_KEY = 'extensionSettings';
 const MAX_HISTORY_MESSAGES = 100;
+const MAX_AGENT_ROUNDS = 15;
+const pendingFrontendRequests = new Map();
 
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
 
@@ -58,6 +60,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === 'agent-start') {
+    runAgent(message.prompt)
+      .then(result => sendResponse({ ok: true, result }))
+      .catch(error => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+
   if (message?.type === 'frontend-tool-request') {
     forwardFrontendRequest(message.request)
       .then(() => sendResponse({ ok: true }))
@@ -66,6 +75,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message?.type === 'frontend-tool-result') {
+    const requestId = message.result?.requestId;
+    const pending = requestId ? pendingFrontendRequests.get(requestId) : undefined;
+    if (pending) {
+      clearTimeout(pending.timer);
+      pendingFrontendRequests.delete(requestId);
+      pending.resolve(message.result);
+      return false;
+    }
     chrome.runtime.sendMessage({ type: 'frontend-tool-result', result: message.result }).catch(() => {});
     return false;
   }
@@ -165,6 +182,82 @@ async function getNotebookContext() {
     throw new Error(payload.error || `Bridge request failed with status ${response.status}.`);
   }
   return payload.notebook;
+}
+
+async function runAgent(prompt) {
+  if (typeof prompt !== 'string' || !prompt.trim()) {
+    throw new Error('A non-empty prompt is required.');
+  }
+
+  const target = await getTarget();
+  const context = await getNotebookContext();
+  let response = await postRuntime('/api/chat/start', { prompt, context });
+  let rounds = 0;
+
+  while (response.status === 'tool_call') {
+    rounds += 1;
+    if (rounds > MAX_AGENT_ROUNDS) {
+      throw new Error('The agent reached its tool-call limit.');
+    }
+    const toolResult = await executeFrontendTool(target, response.toolCall);
+    response = await postRuntime('/api/chat/continue', {
+      sessionId: response.sessionId,
+      toolResult,
+    });
+  }
+
+  return response;
+}
+
+async function postRuntime(path, body) {
+  const response = await fetch(`http://127.0.0.1:8766${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const payload = await response.json();
+  if (!response.ok || payload.ok === false) {
+    throw new Error(payload.error || `Agent runtime failed with status ${response.status}.`);
+  }
+  return payload;
+}
+
+async function executeFrontendTool(target, functionCall) {
+  if (!target?.tabId || !target.notebookName) {
+    throw new Error('No active notebook target is available.');
+  }
+
+  const requestId = globalThis.crypto?.randomUUID?.() ?? `np-${Date.now()}-${Math.random()}`;
+  const request = {
+    type: 'notebook-tool-request',
+    source: 'notebookpilot-extension',
+    requestId,
+    origin: target.origin,
+    tabId: target.tabId,
+    notebookName: target.notebookName,
+    tool: functionCall.name,
+    arguments: functionCall.args ?? {},
+  };
+
+  const resultPromise = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pendingFrontendRequests.delete(requestId);
+      reject(new Error('Frontend tool request timed out.'));
+    }, 30000);
+    pendingFrontendRequests.set(requestId, { resolve, reject, timer });
+  });
+
+  try {
+    await chrome.tabs.sendMessage(target.tabId, { type: 'frontend-tool-request', request });
+  } catch (error) {
+    const pending = pendingFrontendRequests.get(requestId);
+    if (pending) {
+      clearTimeout(pending.timer);
+      pendingFrontendRequests.delete(requestId);
+      pending.reject(error);
+    }
+  }
+  return resultPromise;
 }
 
 async function forwardFrontendRequest(request) {
