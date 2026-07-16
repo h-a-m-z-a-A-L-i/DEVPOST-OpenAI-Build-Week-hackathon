@@ -1,5 +1,6 @@
 import { JupyterFrontEnd, JupyterFrontEndPlugin } from '@jupyterlab/application';
 import { INotebookTracker, NotebookActions, NotebookPanel } from '@jupyterlab/notebook';
+import { assertToolArguments } from './tools';
 
 const PLUGIN_ID = 'notebookpilot:frontend-bridge';
 const REQUEST_TYPE = 'notebook-tool-request';
@@ -107,6 +108,7 @@ async function executeTool(
   tool: string,
   args: Record<string, unknown>
 ): Promise<unknown> {
+  assertToolArguments(tool, args, panel.content.widgets.length);
   switch (tool) {
     case 'get_active_notebook':
       return snapshotNotebook(panel);
