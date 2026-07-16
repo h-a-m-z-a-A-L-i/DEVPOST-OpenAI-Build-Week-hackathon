@@ -183,7 +183,7 @@ async function getNotebookContext() {
   }
 
   const url = `http://127.0.0.1:8765/api/context?name=${encodeURIComponent(notebookName)}`;
-  const response = await fetch(url);
+  const response = await fetchWithTimeout(url);
   const payload = await response.json();
   if (!response.ok || !payload.ok) {
     throw new Error(payload.error || `Bridge request failed with status ${response.status}.`);
@@ -222,16 +222,26 @@ function notifyAgentStatus(payload) {
 }
 
 async function postRuntime(path, body) {
-  const response = await fetch(`http://127.0.0.1:8766${path}`, {
+  const response = await fetchWithTimeout(`http://127.0.0.1:8766${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-  });
+  }, 30000);
   const payload = await response.json();
   if (!response.ok || payload.ok === false) {
     throw new Error(payload.error || `Agent runtime failed with status ${response.status}.`);
   }
   return payload;
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function executeFrontendTool(target, functionCall) {

@@ -31,7 +31,7 @@ def load_dotenv() -> None:
 
 
 def discover_server_root() -> Path:
-    configured_root = os.getenv("JUPYTER_ROOT_DIR")
+    configured_root = os.getenv("JUPYTER_ROOT_DIR") or os.getenv("JUPYTER_SERVER_ROOT")
     if configured_root:
         return Path(configured_root).expanduser().resolve()
 
@@ -40,12 +40,13 @@ def discover_server_root() -> Path:
         capture_output=True,
         text=True,
         check=True,
+        timeout=10,
     )
     for line in result.stdout.splitlines():
         if " :: " in line:
             return Path(line.rsplit(" :: ", 1)[1].strip()).resolve()
 
-    raise RuntimeError("No running Jupyter server was found.")
+    raise RuntimeError("No running Jupyter server was found or its root could not be discovered.")
 
 
 def find_notebooks(root: Path, notebook_name: str) -> list[Path]:

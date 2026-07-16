@@ -27,6 +27,17 @@ Gemini and notebook mutation tools are intentionally not included yet. API keys 
 
 After changing extension files, click **Reload** on `chrome://extensions`, then refresh the JupyterLab tab.
 
+## Start local services
+
+Set `JUPYTER_ROOT_DIR` in the root `.env` to the directory printed by `python -m jupyter server list`, then start both services in separate terminals:
+
+```powershell
+python jupyter-chrome-agent/bridge/server.py
+python jupyter-chrome-agent/runtime/server.py
+```
+
+The panel reports a timeout or bridge error if either service is unavailable.
+
 ## Target identity
 
 The URL is used only to confirm that the page is the configured JupyterLab host. Notebook identity comes from the active `.lm-TabBar-tab` and `.lm-TabBar-tabLabel` elements in `#jp-main-dock-panel`. The extension stores the current target as `tabId + origin + notebookName`.

@@ -22,4 +22,6 @@ http://127.0.0.1:8765/api/context?name=Untitled.ipynb
 
 The notebook name is resolved below the root reported by `python -m jupyter server list`. If multiple notebooks have the same name, the bridge returns `409` with candidate paths instead of choosing incorrectly.
 
+For a stable local setup, set `JUPYTER_ROOT_DIR` in `.env` to the root shown by `python -m jupyter server list`, for example `C:\Users\Admin`. This avoids delays caused by restricted Jupyter runtime metadata permissions.
+
 The Chrome extension uses this endpoint to fetch the normalized notebook context before the Gemini tool layer is added.
