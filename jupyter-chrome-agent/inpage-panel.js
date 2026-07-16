@@ -25,6 +25,9 @@
     if (message?.type === 'frontend-tool-request') {
       window.postMessage(message.request, window.location.origin);
     }
+    if (message?.type === 'agent-status') {
+      renderAgentStatus(message);
+    }
   });
   document.addEventListener('click', event => {
     if (event.target.closest('.lm-TabBar-tab')) {
@@ -93,13 +96,14 @@
         .title { font-size: 13px; font-weight: 700; } .subtitle { margin-top: 2px; color: #9badc4; font-size: 10px; }
         .close { padding: 2px 6px; color: #d9e4f5; background: transparent; border: 0; font-size: 18px; cursor: pointer; }
         .body { display: flex; flex: 1; flex-direction: column; gap: 10px; padding: 12px; }
-        .target { padding: 8px; overflow-wrap: anywhere; color: #9badc4; background: #101722; border-radius: 8px; font-size: 11px; }
+        .target { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px; overflow-wrap: anywhere; color: #9badc4; background: #101722; border-radius: 8px; font-size: 11px; }
+        .agent-status { flex: none; color: #65d391; font-size: 10px; font-weight: 700; }
         .messages { display: flex; flex: 1; flex-direction: column; gap: 8px; overflow: auto; } .message { padding: 8px 9px; border-radius: 8px; color: #dce7f7; background: #26344a; font-size: 12px; line-height: 1.4; }
         form { display: flex; gap: 7px; } textarea { min-width: 0; flex: 1; resize: none; padding: 8px; color: #eef4ff; background: #101722; border: 1px solid #3b4c67; border-radius: 7px; font: 12px system-ui,sans-serif; }
         button.send { padding: 7px 9px; align-self: end; color: #07110b; background: #65d391; border: 0; border-radius: 7px; font-size: 11px; font-weight: 700; cursor: pointer; }
       </style>
       <button class="toggle" title="Open Jupyter Notebook Agent">NP</button>
-      <section class="panel"><header class="header"><div><div class="title">NotebookPilot</div><div class="subtitle">Local JupyterLab assistant</div></div><button class="close" title="Close">×</button></header><div class="body"><div class="target">Active notebook: <span class="target-path"></span></div><div class="messages"><div class="message">I’m connected to this notebook. Tools will appear here next.</div></div><form><textarea rows="2" placeholder="Ask about this notebook..."></textarea><button class="send" type="submit">Send</button></form></div></section>
+      <section class="panel"><header class="header"><div><div class="title">NotebookPilot</div><div class="subtitle">Local JupyterLab assistant</div></div><button class="close" title="Close">×</button></header><div class="body"><div class="target">Active notebook: <span class="target-path"></span><span class="agent-status">Ready</span></div><div class="messages"><div class="message">I’m connected to this notebook. Tools will appear here next.</div></div><form><textarea rows="2" placeholder="Ask about this notebook..."></textarea><button class="send" type="submit">Send</button></form></div></section>
     `;
 
     const toggle = shadowRoot.querySelector('.toggle');
@@ -145,6 +149,20 @@
       messages.scrollTop = messages.scrollHeight;
       conversation.push({ role, text, createdAt: new Date().toISOString() });
       void saveConversation();
+    }
+  }
+
+  function renderAgentStatus(status) {
+    const element = shadowRoot?.querySelector('.agent-status');
+    if (!element) return;
+    if (status.status === 'tool_call') {
+      element.textContent = `Using ${status.tool}`;
+    } else if (status.status === 'thinking') {
+      element.textContent = 'Thinking';
+    } else if (status.status === 'complete') {
+      element.textContent = 'Ready';
+    } else {
+      element.textContent = status.message || 'Error';
     }
   }
 

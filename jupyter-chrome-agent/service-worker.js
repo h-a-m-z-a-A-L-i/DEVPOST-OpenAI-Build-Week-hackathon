@@ -61,9 +61,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message?.type === 'agent-start') {
+    notifyAgentStatus({ status: 'thinking' });
     runAgent(message.prompt)
-      .then(result => sendResponse({ ok: true, result }))
-      .catch(error => sendResponse({ ok: false, error: error.message }));
+      .then(result => {
+        notifyAgentStatus({ status: 'complete' });
+        sendResponse({ ok: true, result });
+      })
+      .catch(error => {
+        notifyAgentStatus({ status: 'error', message: error.message });
+        sendResponse({ ok: false, error: error.message });
+      });
     return true;
   }
 
@@ -199,6 +206,7 @@ async function runAgent(prompt) {
     if (rounds > MAX_AGENT_ROUNDS) {
       throw new Error('The agent reached its tool-call limit.');
     }
+    notifyAgentStatus({ status: 'tool_call', tool: response.toolCall.name });
     const toolResult = await executeFrontendTool(target, response.toolCall);
     response = await postRuntime('/api/chat/continue', {
       sessionId: response.sessionId,
@@ -207,6 +215,10 @@ async function runAgent(prompt) {
   }
 
   return response;
+}
+
+function notifyAgentStatus(payload) {
+  chrome.runtime.sendMessage({ type: 'agent-status', ...payload }).catch(() => {});
 }
 
 async function postRuntime(path, body) {

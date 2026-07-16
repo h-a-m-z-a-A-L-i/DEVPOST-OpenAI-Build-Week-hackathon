@@ -22,6 +22,8 @@ Final response in panel
 
 The service worker continues the loop until Gemini returns text or the maximum agent round limit is reached.
 
+The floating panel receives status events for `thinking`, `tool_call`, `complete`, and `error` states.
+
 ## Local services
 
 Start both services before testing:
