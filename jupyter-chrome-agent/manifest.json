@@ -11,7 +11,8 @@
   "host_permissions": [
     "http://localhost:8888/lab",
     "http://localhost:8888/lab/*",
-    "http://127.0.0.1:8765/*"
+    "http://127.0.0.1:8765/*",
+    "http://127.0.0.1:8766/*"
   ],
   "content_scripts": [
     {

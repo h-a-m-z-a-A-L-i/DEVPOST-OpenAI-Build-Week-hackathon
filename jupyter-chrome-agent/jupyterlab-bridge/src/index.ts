@@ -92,7 +92,8 @@ function validateRequest(request: Partial<ToolRequest>): asserts request is Tool
   if (request.origin !== window.location.origin) {
     throw bridgeError('ORIGIN_REJECTED', 'The request origin is not trusted.', false);
   }
-  if (!Number.isInteger(request.tabId) || request.tabId < 0) {
+  const tabId = request.tabId;
+  if (typeof tabId !== 'number' || !Number.isInteger(tabId) || tabId < 0) {
     throw bridgeError('INVALID_MESSAGE', 'A valid tabId is required.', false);
   }
   if (!request.notebookName?.toLowerCase().endsWith('.ipynb')) {
@@ -157,7 +158,7 @@ function insertCell(panel: NotebookPanel, args: Record<string, unknown>) {
   const index = requireInsertIndex(panel, args);
   const source = requireSource(args);
   const type = args.type === 'markdown' ? 'markdown' : 'code';
-  const sharedModel = panel.content.model.sharedModel as any;
+  const sharedModel = requireNotebookModel(panel).sharedModel as any;
   sharedModel.insertCell(index, { cell_type: type, source, metadata: {} });
   return snapshotCell(panel, index);
 }
@@ -172,7 +173,7 @@ function editCell(panel: NotebookPanel, args: Record<string, unknown>) {
 
 function deleteCell(panel: NotebookPanel, index: number) {
   cellAt(panel, index);
-  (panel.content.model.sharedModel as any).deleteCell(index);
+  (requireNotebookModel(panel).sharedModel as any).deleteCell(index);
   return snapshotNotebook(panel, false);
 }
 
@@ -187,6 +188,13 @@ function cellAt(panel: NotebookPanel, index: number) {
     throw bridgeError('INVALID_CELL_INDEX', `Cell index ${index} is outside the active notebook.`, false);
   }
   return panel.content.widgets[index];
+}
+
+function requireNotebookModel(panel: NotebookPanel) {
+  if (!panel.content.model) {
+    throw bridgeError('NO_ACTIVE_NOTEBOOK', 'The active notebook model is not ready.', true);
+  }
+  return panel.content.model;
 }
 
 function requireIndex(args: Record<string, unknown>) {
