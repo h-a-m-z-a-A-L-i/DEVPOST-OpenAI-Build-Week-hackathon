@@ -6,6 +6,9 @@
   let host;
   let shadowRoot;
   let targetPath;
+  let conversation = [];
+  let conversationTarget;
+  let conversationTargetKey;
 
   const observer = new MutationObserver(() => updateActiveNotebook());
   observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'aria-selected'] });
@@ -17,18 +20,29 @@
 
   updateActiveNotebook();
 
-  function updateActiveNotebook() {
+  async function updateActiveNotebook() {
     const notebookName = findActiveNotebookName();
     chrome.runtime.sendMessage({ type: 'notebook-tab-state', notebookName }).catch(() => {});
 
     if (notebookName) {
       ensurePanel();
       targetPath.textContent = notebookName;
+      const nextTarget = await getCurrentTarget();
+      const nextTargetKey = getTargetKey(nextTarget);
+      if (nextTarget && nextTargetKey !== conversationTargetKey) {
+        conversationTargetKey = nextTargetKey;
+        conversationTarget = nextTarget;
+        conversation = [];
+        await restoreConversation();
+      }
     } else {
       host?.remove();
       host = undefined;
       shadowRoot = undefined;
       targetPath = undefined;
+      conversation = [];
+      conversationTarget = undefined;
+      conversationTargetKey = undefined;
     }
   }
 
@@ -114,6 +128,40 @@
       message.textContent = text;
       messages.append(message);
       messages.scrollTop = messages.scrollHeight;
+      conversation.push({ role, text, createdAt: new Date().toISOString() });
+      void saveConversation();
     }
+  }
+
+  async function restoreConversation() {
+    if (!conversationTarget || !shadowRoot) return;
+    const response = await chrome.runtime.sendMessage({ type: 'get-conversation', target: conversationTarget });
+    if (!response?.ok || !Array.isArray(response.messages)) return;
+
+    conversation = response.messages;
+    const messages = shadowRoot.querySelector('.messages');
+    messages.replaceChildren();
+    conversation.forEach(item => {
+      const message = document.createElement('div');
+      message.className = `message ${item.role}`;
+      message.textContent = item.text;
+      messages.append(message);
+    });
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  async function saveConversation() {
+    if (!conversationTarget) return;
+    await chrome.runtime.sendMessage({ type: 'save-conversation', target: conversationTarget, messages: conversation });
+  }
+
+  async function getCurrentTarget() {
+    const response = await chrome.runtime.sendMessage({ type: 'get-target' });
+    return response?.target ?? null;
+  }
+
+  function getTargetKey(target) {
+    if (!target) return undefined;
+    return `${target.tabId}:${target.origin}:${target.notebookPath}`;
   }
 })();

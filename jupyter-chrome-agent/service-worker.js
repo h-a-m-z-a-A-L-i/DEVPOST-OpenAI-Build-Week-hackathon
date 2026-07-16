@@ -1,6 +1,8 @@
 import { parseJupyterTab } from './tab-identity.js';
 
 const TARGET_KEY = 'activeJupyterTarget';
+const SETTINGS_KEY = 'extensionSettings';
+const MAX_HISTORY_MESSAGES = 100;
 
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
 
@@ -53,6 +55,34 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     getNotebookContext()
       .then(context => sendResponse({ ok: true, context }))
       .catch(error => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+
+  if (message?.type === 'get-extension-settings') {
+    chrome.storage.local.get(SETTINGS_KEY)
+      .then(result => sendResponse({ ok: true, settings: result[SETTINGS_KEY] ?? {} }));
+    return true;
+  }
+
+  if (message?.type === 'save-extension-settings') {
+    const settings = sanitizeSettings(message.settings);
+    chrome.storage.local.set({ [SETTINGS_KEY]: settings })
+      .then(() => sendResponse({ ok: true, settings }));
+    return true;
+  }
+
+  if (message?.type === 'get-conversation') {
+    const key = conversationKey(message.target);
+    chrome.storage.local.get(key)
+      .then(result => sendResponse({ ok: true, messages: result[key] ?? [] }));
+    return true;
+  }
+
+  if (message?.type === 'save-conversation') {
+    const key = conversationKey(message.target);
+    const messages = sanitizeMessages(message.messages);
+    chrome.storage.local.set({ [key]: messages })
+      .then(() => sendResponse({ ok: true }));
     return true;
   }
 
@@ -114,4 +144,35 @@ async function getNotebookContext() {
     throw new Error(payload.error || `Bridge request failed with status ${response.status}.`);
   }
   return payload.notebook;
+}
+
+function conversationKey(target) {
+  if (!target?.tabId || !target?.origin || !target?.notebookPath) {
+    throw new Error('A complete notebook target is required.');
+  }
+  return `conversation:${target.tabId}:${target.origin}:${target.notebookPath}`;
+}
+
+function sanitizeSettings(settings) {
+  if (!settings || typeof settings !== 'object') {
+    return {};
+  }
+  return {
+    compactMode: settings.compactMode === true,
+    showToolActivity: settings.showToolActivity !== false,
+  };
+}
+
+function sanitizeMessages(messages) {
+  if (!Array.isArray(messages)) {
+    throw new Error('Conversation messages must be an array.');
+  }
+  return messages
+    .filter(message => message && (message.role === 'user' || message.role === 'assistant'))
+    .map(message => ({
+      role: message.role,
+      text: String(message.text ?? '').slice(0, 12000),
+      createdAt: String(message.createdAt ?? new Date().toISOString()),
+    }))
+    .slice(-MAX_HISTORY_MESSAGES);
 }
