@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Jupyter Notebook Agent",
+  "version": "0.1.0",
+  "description": "Chrome side panel for interacting with the active local JupyterLab notebook.",
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://localhost:8888/lab",
+    "http://localhost:8888/lab/*",
+    "http://127.0.0.1:8765/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost:8888/lab",
+        "http://localhost:8888/lab/*"
+      ],
+      "js": ["inpage-panel.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Open Jupyter Notebook Agent"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  }
+}

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Jupyter Notebook Agent</title>
+    <link rel="stylesheet" href="sidepanel.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header>
+        <p class="eyebrow">JUPYTER NOTEBOOK AGENT</p>
+        <h1>NotebookPilot</h1>
+        <p class="subtitle">Your local notebook assistant</p>
+      </header>
+
+      <section class="card" aria-live="polite">
+        <div class="card-heading">
+          <span>Target notebook</span>
+          <span id="status" class="status">Checking</span>
+        </div>
+        <p id="notebook-name" class="notebook-name">No JupyterLab notebook detected.</p>
+        <p id="notebook-details" class="details">Open a notebook at localhost to begin.</p>
+      </section>
+
+      <section class="chat card">
+        <div id="messages" class="messages">
+          <div class="message assistant">Open a local JupyterLab notebook, then tell me what you want to do.</div>
+        </div>
+        <form id="chat-form" class="composer">
+          <textarea id="prompt" rows="3" placeholder="Ask about the current notebook..."></textarea>
+          <button type="submit">Send</button>
+        </form>
+      </section>
+    </main>
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+</html>
