@@ -115,15 +115,23 @@ async function updateTargetFromNotebookTab(tabId, notebookName) {
     return;
   }
 
+  const current = await getTarget();
+  if (current?.tabId === tabId && current.notebookName === notebookName) {
+    return;
+  }
+
   const target = {
     tabId,
     ...identity,
+    notebookName,
     notebookPath: notebookName,
     isNotebook: true,
+    resolveStatus: 'resolving',
     detectedAt: new Date().toISOString(),
   };
   await chrome.storage.session.set({ [TARGET_KEY]: target });
   await chrome.sidePanel.setOptions({ tabId, enabled: true });
+  await resolveNotebookTarget(target);
 }
 
 async function getTarget() {
@@ -133,11 +141,12 @@ async function getTarget() {
 
 async function getNotebookContext() {
   const target = await getTarget();
-  if (!target?.notebookPath) {
+  const notebookName = target?.notebookName ?? target?.notebookPath;
+  if (!notebookName) {
     throw new Error('No active notebook has been identified.');
   }
 
-  const url = `http://127.0.0.1:8765/api/notebook?name=${encodeURIComponent(target.notebookPath)}`;
+  const url = `http://127.0.0.1:8765/api/notebook?name=${encodeURIComponent(notebookName)}`;
   const response = await fetch(url);
   const payload = await response.json();
   if (!response.ok || !payload.ok) {
@@ -147,10 +156,43 @@ async function getNotebookContext() {
 }
 
 function conversationKey(target) {
-  if (!target?.tabId || !target?.origin || !target?.notebookPath) {
+  const notebookName = target?.notebookName ?? target?.notebookPath;
+  if (!target?.tabId || !target?.origin || !notebookName) {
     throw new Error('A complete notebook target is required.');
   }
-  return `conversation:${target.tabId}:${target.origin}:${target.notebookPath}`;
+  return `conversation:${target.tabId}:${target.origin}:${notebookName}`;
+}
+
+async function resolveNotebookTarget(target) {
+  const notebookName = target.notebookName;
+  const url = `http://127.0.0.1:8765/api/notebook?name=${encodeURIComponent(notebookName)}`;
+  try {
+    const response = await fetch(url);
+    const payload = await response.json();
+    const current = await getTarget();
+    if (current?.tabId !== target.tabId || current.notebookName !== notebookName) {
+      return;
+    }
+
+    const nextTarget = {
+      ...current,
+      localPath: payload.ok ? payload.notebook.path : undefined,
+      resolveStatus: payload.ok
+        ? 'resolved'
+        : response.status === 409
+          ? 'ambiguous'
+          : 'not-found',
+      candidates: payload.candidates ?? undefined,
+    };
+    await chrome.storage.session.set({ [TARGET_KEY]: nextTarget });
+  } catch {
+    const current = await getTarget();
+    if (current?.tabId === target.tabId && current.notebookName === notebookName) {
+      await chrome.storage.session.set({
+        [TARGET_KEY]: { ...current, resolveStatus: 'bridge-unavailable' },
+      });
+    }
+  }
 }
 
 function sanitizeSettings(settings) {
