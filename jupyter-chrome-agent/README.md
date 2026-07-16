@@ -38,6 +38,15 @@ python jupyter-chrome-agent/runtime/server.py
 
 The panel reports a timeout or bridge error if either service is unavailable.
 
+For automatic startup, install the Jupyter Server extension once:
+
+```powershell
+python -m pip install -e jupyter-chrome-agent/server-extension
+python -m jupyter server extension enable --py notebookpilot_server
+```
+
+After restarting JupyterLab, the bridge and Gemini runtime start automatically.
+
 ## Target identity
 
 The URL is used only to confirm that the page is the configured JupyterLab host. Notebook identity comes from the active `.lm-TabBar-tab` and `.lm-TabBar-tabLabel` elements in `#jp-main-dock-panel`. The extension stores the current target as `tabId + origin + notebookName`.
