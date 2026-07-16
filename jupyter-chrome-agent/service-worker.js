@@ -58,6 +58,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === 'frontend-tool-request') {
+    forwardFrontendRequest(message.request)
+      .then(() => sendResponse({ ok: true }))
+      .catch(error => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+
+  if (message?.type === 'frontend-tool-result') {
+    chrome.runtime.sendMessage({ type: 'frontend-tool-result', result: message.result }).catch(() => {});
+    return false;
+  }
+
   if (message?.type === 'get-extension-settings') {
     chrome.storage.local.get(SETTINGS_KEY)
       .then(result => sendResponse({ ok: true, settings: result[SETTINGS_KEY] ?? {} }));
@@ -153,6 +165,17 @@ async function getNotebookContext() {
     throw new Error(payload.error || `Bridge request failed with status ${response.status}.`);
   }
   return payload.notebook;
+}
+
+async function forwardFrontendRequest(request) {
+  const target = await getTarget();
+  if (!target?.tabId) {
+    throw new Error('No active notebook tab is available.');
+  }
+  await chrome.tabs.sendMessage(target.tabId, {
+    type: 'frontend-tool-request',
+    request,
+  });
 }
 
 function conversationKey(target) {

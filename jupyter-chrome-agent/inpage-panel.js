@@ -12,6 +12,20 @@
 
   const observer = new MutationObserver(() => updateActiveNotebook());
   observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'aria-selected'] });
+  window.addEventListener('message', event => {
+    if (event.source !== window || event.origin !== window.location.origin) {
+      return;
+    }
+    if (event.data?.type === 'notebook-tool-result' && event.data.source === 'notebookpilot-jupyterlab') {
+      chrome.runtime.sendMessage({ type: 'frontend-tool-result', result: event.data }).catch(() => {});
+    }
+  });
+
+  chrome.runtime.onMessage.addListener(message => {
+    if (message?.type === 'frontend-tool-request') {
+      window.postMessage(message.request, window.location.origin);
+    }
+  });
   document.addEventListener('click', event => {
     if (event.target.closest('.lm-TabBar-tab')) {
       window.setTimeout(updateActiveNotebook, 0);

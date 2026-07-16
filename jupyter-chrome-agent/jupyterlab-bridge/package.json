@@ -1,0 +1,24 @@
+{
+  "name": "notebookpilot-jupyterlab-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "JupyterLab frontend bridge for NotebookPilot.",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": ["lib"],
+  "jupyterlab": {
+    "extension": true
+  },
+  "scripts": {
+    "build": "tsc",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@jupyterlab/application": "^4.6.1",
+    "@jupyterlab/notebook": "^4.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}
