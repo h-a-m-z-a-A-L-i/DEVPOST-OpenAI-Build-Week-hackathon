@@ -241,8 +241,9 @@ async function runAgent(prompt, conversationId) {
   target.conversationId = sanitizeConversationId(conversationId) || undefined;
   const context = await getNotebookContext();
   const history = await getConversationHistory(target);
-  let response = await postRuntimeStream(
+  let response = await postRuntimeStreamWithFallback(
     '/api/chat/start-stream',
+    '/api/chat/start',
     { prompt, context, history },
     text => notifyAgentStatus({ status: 'text_delta', text }),
   );
@@ -262,8 +263,9 @@ async function runAgent(prompt, conversationId) {
     for (const toolCall of toolCalls) {
       toolResults.push(await executeFrontendTool(target, toolCall));
     }
-    response = await postRuntimeStream(
+    response = await postRuntimeStreamWithFallback(
       '/api/chat/continue-stream',
+      '/api/chat/continue',
       {
         sessionId: response.sessionId,
         toolResult: toolCalls.length === 1 ? toolResults[0] : { toolResults },
@@ -308,7 +310,9 @@ async function postRuntimeStream(path, body, onText) {
   if (!response.ok || !response.body) {
     let payload = {};
     try { payload = await response.json(); } catch {}
-    throw new Error(payload.error || `Agent runtime failed with status ${response.status}.`);
+    const error = new Error(payload.error || `Agent runtime failed with status ${response.status}.`);
+    error.status = response.status;
+    throw error;
   }
 
   const reader = response.body.getReader();
@@ -332,6 +336,17 @@ async function postRuntimeStream(path, body, onText) {
   }
   if (!result) throw new Error('Agent stream ended without a result.');
   return result;
+}
+
+async function postRuntimeStreamWithFallback(streamPath, legacyPath, body, onText) {
+  try {
+    return await postRuntimeStream(streamPath, body, onText);
+  } catch (error) {
+    if (error.status !== 404) throw error;
+    const result = await postRuntime(legacyPath, body);
+    if (result?.text) onText(result.text);
+    return result;
+  }
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
