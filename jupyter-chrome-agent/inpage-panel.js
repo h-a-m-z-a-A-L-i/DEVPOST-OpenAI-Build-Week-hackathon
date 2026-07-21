@@ -9,6 +9,8 @@
   let conversation = [];
   let conversationTarget;
   let conversationTargetKey;
+  let activeActivityMessage;
+  let activeComposer;
 
   const observer = new MutationObserver(() => updateActiveNotebook());
   observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'aria-selected'] });
@@ -57,6 +59,8 @@
       host = undefined;
       shadowRoot = undefined;
       targetPath = undefined;
+      activeActivityMessage = undefined;
+      activeComposer = undefined;
       conversation = [];
       conversationTarget = undefined;
       conversationTargetKey = undefined;
@@ -98,8 +102,8 @@
         .body { display: flex; flex: 1; flex-direction: column; gap: 10px; padding: 12px; }
         .target { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px; overflow-wrap: anywhere; color: #9badc4; background: #101722; border-radius: 8px; font-size: 11px; }
         .agent-status { flex: none; color: #65d391; font-size: 10px; font-weight: 700; }
-        .messages { display: flex; flex: 1; flex-direction: column; gap: 8px; overflow: auto; } .message { padding: 8px 9px; border-radius: 8px; color: #dce7f7; background: #26344a; font-size: 12px; line-height: 1.4; }
-        form { display: flex; gap: 7px; } textarea { min-width: 0; flex: 1; resize: none; padding: 8px; color: #eef4ff; background: #101722; border: 1px solid #3b4c67; border-radius: 7px; font: 12px system-ui,sans-serif; }
+        .messages { display: flex; flex: 1; flex-direction: column; gap: 8px; overflow: auto; } .message { padding: 8px 9px; border-radius: 8px; color: #dce7f7; background: #26344a; font-size: 12px; line-height: 1.4; } .activity { color: #a9c2e3; background: #1b2a3e; font-style: italic; } .message.error { color: #ffd0d0; background: #4c252d; }
+        form { display: flex; gap: 7px; } textarea { min-width: 0; flex: 1; resize: none; padding: 8px; color: #eef4ff; background: #101722; border: 1px solid #3b4c67; border-radius: 7px; font: 12px system-ui,sans-serif; } textarea:disabled { opacity: .6; }
         button.send { padding: 7px 9px; align-self: end; color: #07110b; background: #65d391; border: 0; border-radius: 7px; font-size: 11px; font-weight: 700; cursor: pointer; }
       </style>
       <button class="toggle" title="Open Jupyter Notebook Agent">NP</button>
@@ -114,6 +118,7 @@
     const form = shadowRoot.querySelector('form');
     const textarea = shadowRoot.querySelector('textarea');
     const messages = shadowRoot.querySelector('.messages');
+    activeComposer = textarea;
 
     toggle.addEventListener('click', () => { panel.classList.add('open'); toggle.classList.add('hidden'); });
     close.addEventListener('click', () => { panel.classList.remove('open'); toggle.classList.remove('hidden'); });
@@ -122,7 +127,8 @@
       const text = textarea.value.trim();
       if (!text) return;
       addMessage(text, 'user');
-      addMessage('Working on the notebook...', 'assistant');
+      activeActivityMessage = addMessage('Working on the notebook...', 'activity');
+      activeComposer.disabled = true;
       textarea.value = '';
       void runAgent(text);
     });
@@ -149,6 +155,7 @@
       messages.scrollTop = messages.scrollHeight;
       conversation.push({ role, text, createdAt: new Date().toISOString() });
       void saveConversation();
+      return message;
     }
   }
 
@@ -163,6 +170,16 @@
       element.textContent = 'Ready';
     } else {
       element.textContent = status.message || 'Error';
+    }
+    if (activeActivityMessage) {
+      activeActivityMessage.textContent = status.status === 'tool_call'
+        ? `Using ${status.tool}...`
+        : status.status === 'thinking'
+          ? 'Thinking...'
+          : status.status === 'error'
+            ? (status.message || 'The agent encountered an error.')
+            : 'Completed.';
+      activeActivityMessage.classList.toggle('error', status.status === 'error');
     }
   }
 
@@ -200,10 +217,14 @@
 
   async function runAgent(prompt) {
     const response = await chrome.runtime.sendMessage({ type: 'agent-start', prompt });
+    if (activeComposer) activeComposer.disabled = false;
     if (!response?.ok) {
+      if (activeActivityMessage) activeActivityMessage.classList.add('error');
       addPanelMessage(response?.error ?? 'The agent failed to respond.', 'assistant');
       return;
     }
+    activeActivityMessage?.remove();
+    activeActivityMessage = undefined;
     const text = response.result?.text || 'The agent completed without a final response.';
     addPanelMessage(text, 'assistant');
   }

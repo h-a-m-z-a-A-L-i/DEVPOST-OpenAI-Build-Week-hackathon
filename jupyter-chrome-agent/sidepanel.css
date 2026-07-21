@@ -1,8 +1,12 @@
 :root {
-  color-scheme: light dark;
+  color-scheme: dark;
   font-family: system-ui, sans-serif;
   background: #10131a;
   color: #f4f6fb;
+  --border: #2c3545;
+  --muted: #9ba8ba;
+  --surface: #171c25;
+  --accent: #65d391;
 }
 
 * { box-sizing: border-box; }
@@ -10,19 +14,23 @@ body { margin: 0; min-width: 280px; background: #10131a; }
 .shell { display: grid; gap: 16px; padding: 18px; }
 .eyebrow { margin: 0 0 6px; color: #8da2c0; font-size: 10px; letter-spacing: .12em; }
 h1 { margin: 0; font-size: 22px; }
-.subtitle, .details { color: #9ba8ba; font-size: 12px; }
+.subtitle, .details { color: var(--muted); font-size: 12px; }
 .subtitle { margin: 4px 0 0; }
-.card { padding: 14px; border: 1px solid #2c3545; border-radius: 12px; background: #171c25; }
+.card { padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: 0 10px 24px rgba(0,0,0,.14); }
 .card-heading { display: flex; justify-content: space-between; gap: 8px; color: #b8c4d6; font-size: 11px; text-transform: uppercase; }
 .status { color: #f0b35b; }
-.status.ready { color: #65d391; }
+.status.ready { color: var(--accent); }
 .notebook-name { margin: 12px 0 5px; overflow-wrap: anywhere; font-weight: 650; }
 .details { margin: 0; overflow-wrap: anywhere; }
 .chat { display: grid; gap: 12px; }
-.messages { display: grid; gap: 8px; min-height: 100px; }
+.messages { display: grid; align-content: start; gap: 8px; min-height: 100px; max-height: 42vh; overflow: auto; }
 .message { padding: 9px 10px; border-radius: 9px; font-size: 13px; line-height: 1.4; }
 .assistant { background: #202938; }
 .user { background: #244c3a; }
+.error { color: #ffd0d0; background: #4c252d; }
 .composer { display: grid; gap: 8px; }
 textarea { width: 100%; resize: vertical; padding: 9px; color: inherit; background: #10131a; border: 1px solid #3a4659; border-radius: 8px; font: inherit; }
-button { padding: 9px 12px; color: #08110c; background: #65d391; border: 0; border-radius: 8px; font-weight: 700; cursor: pointer; }
+button { padding: 9px 12px; color: #08110c; background: var(--accent); border: 0; border-radius: 8px; font-weight: 700; cursor: pointer; transition: transform .15s ease, opacity .15s ease; }
+button:hover { transform: translateY(-1px); }
+button:disabled, textarea:disabled { cursor: wait; opacity: .55; }
+@media (max-width: 360px) { .shell { padding: 12px; } .card { padding: 11px; } }
