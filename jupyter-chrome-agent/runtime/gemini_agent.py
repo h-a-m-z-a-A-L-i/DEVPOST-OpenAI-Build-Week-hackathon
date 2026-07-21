@@ -229,8 +229,8 @@ def build_prompt(prompt: str, context: dict[str, Any], history: list[dict[str, A
         "cell, preserve behavior while refactoring it into these separate working sections; do not create a "
         "monolithic replacement cell. After structural edits, run affected cells in order and report failures. "
         "Never invent tool results. If a tool fails, inspect the error and recover or explain the blocker.\n\n"
-        f"Recent conversation:\n{memory_text}\n\n"
         f"Notebook context:\n{json.dumps(context, ensure_ascii=False)}\n\n"
+        f"Recent conversation:\n{memory_text}\n\n"
         f"User request:\n{prompt}"
     )
 

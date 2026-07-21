@@ -99,6 +99,11 @@ class GeminiAgentTests(unittest.TestCase):
         self.assertIn("one working stage per cell", prompt)
         self.assertIn("run affected cells in order", prompt)
 
+    def test_prompt_places_notebook_context_before_dynamic_history(self):
+        prompt = build_prompt("What is this?", {"cells": []}, [{"role": "user", "text": "Earlier"}])
+
+        self.assertLess(prompt.index("Notebook context:"), prompt.index("Recent conversation:"))
+
     def test_agent_stops_after_repeating_same_tool_call(self):
         agent = NotebookAgent(RepeatingToolClient())
         pending = agent.start("Summarize the notebook.", {"cells": []}, NOTEBOOK_TOOLS)
