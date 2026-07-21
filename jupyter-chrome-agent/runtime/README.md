@@ -26,3 +26,8 @@ Codex gateway. Credentials remain local to the Python runtime.
 Set `LLM_PROVIDER=langchain` to use the optional LangChain Gemini adapter. Install
 `runtime/requirements.txt` first. The adapter preserves the existing tool and
 streaming contracts; the default provider remains the direct Gemini client.
+
+The dependency-light `graph_state.py` module defines the Phase 2 LangGraph state
+contract and creates a stable thread ID from the notebook path and conversation
+ID. The graph does not replace the existing agent loop until later phases; this
+keeps the current runtime behavior unchanged while the state contract is tested.
