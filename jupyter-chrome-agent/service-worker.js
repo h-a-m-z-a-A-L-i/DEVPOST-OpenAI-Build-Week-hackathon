@@ -241,17 +241,30 @@ async function runAgent(prompt, conversationId) {
   target.conversationId = sanitizeConversationId(conversationId) || undefined;
   const context = await getNotebookContext();
   const history = await getConversationHistory(target);
-  let response = await postRuntimeStream(
-    '/api/graph/start-stream',
-    {
-      prompt,
-      context,
-      history,
-      notebookPath: target.notebookPath || target.notebookName,
-      conversationId: target.conversationId || conversationId || 'default',
-    },
-    text => notifyAgentStatus({ status: 'text_delta', text, conversationId }),
-  );
+  const graphBody = {
+    prompt,
+    context,
+    history,
+    notebookPath: target.notebookPath || target.notebookName,
+    conversationId: target.conversationId || conversationId || 'default',
+  };
+  let graphMode = true;
+  let response;
+  try {
+    response = await postRuntimeStream(
+      '/api/graph/start-stream',
+      graphBody,
+      text => notifyAgentStatus({ status: 'text_delta', text, conversationId }),
+    );
+  } catch (error) {
+    if (error.status !== 404) throw error;
+    graphMode = false;
+    response = await postRuntimeStream(
+      '/api/chat/start-stream',
+      { prompt, context, history },
+      text => notifyAgentStatus({ status: 'text_delta', text, conversationId }),
+    );
+  }
   let rounds = 0;
 
   while (response.status === 'tool_call') {
@@ -269,14 +282,22 @@ async function runAgent(prompt, conversationId) {
     for (const toolCall of toolCalls) {
       toolResults.push(await executeFrontendTool(target, toolCall));
     }
-    response = await postRuntimeStream(
-      '/api/graph/continue-stream',
-      {
-        graphState: response.graphState,
-        toolResults,
-      },
-      text => notifyAgentStatus({ status: 'text_delta', text, conversationId }),
-    );
+    if (graphMode) {
+      response = await postRuntimeStream(
+        '/api/graph/continue-stream',
+        { graphState: response.graphState, toolResults },
+        text => notifyAgentStatus({ status: 'text_delta', text, conversationId }),
+      );
+    } else {
+      response = await postRuntimeStream(
+        '/api/chat/continue-stream',
+        {
+          sessionId: response.sessionId,
+          toolResult: toolCalls.length === 1 ? toolResults[0] : { toolResults },
+        },
+        text => notifyAgentStatus({ status: 'text_delta', text, conversationId }),
+      );
+    }
   }
 
   return response;
