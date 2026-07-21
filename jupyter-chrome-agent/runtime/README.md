@@ -45,3 +45,7 @@ read-only or ordered mutation work before they reach the frontend bridge.
 `workflow_graph.py` provides the notebook workflow layer: stages are validated
 for unique IDs, missing dependencies, and cycles; only dependency-ready stages
 can run; and each result can be marked completed or failed for safe resumption.
+
+`checkpoint_store.py` provides optional atomic SQLite persistence for graph state.
+`NotebookAgentGraph` can save each pause/result and resume a pending tool round
+after a runtime restart without persisting callbacks or response-only objects.

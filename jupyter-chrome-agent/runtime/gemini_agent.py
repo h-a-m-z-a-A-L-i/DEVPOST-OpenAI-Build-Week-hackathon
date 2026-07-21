@@ -242,6 +242,17 @@ class NotebookAgent:
             self.sessions.pop(session_id, None)
             raise
 
+    def export_session(self, session_id: str) -> dict[str, Any]:
+        session = self.sessions.get(session_id)
+        if not session:
+            raise GeminiError("Agent session was not found or expired.")
+        return deepcopy(session)
+
+    def restore_session(self, session_id: str, session: dict[str, Any]) -> None:
+        if not isinstance(session, dict) or not session.get("contents"):
+            raise GeminiError("The persisted agent session is invalid.")
+        self.sessions[session_id] = deepcopy(session)
+
     def _advance(self, session_id: str, on_text: Callable[[str], None] | None = None) -> dict[str, Any]:
         session = self.sessions[session_id]
         if time.monotonic() - session["createdAt"] > self.session_ttl:

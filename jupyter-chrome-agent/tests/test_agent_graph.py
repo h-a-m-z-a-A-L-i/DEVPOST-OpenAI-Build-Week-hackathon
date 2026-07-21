@@ -7,6 +7,7 @@ RUNTIME_PATH = Path(__file__).parents[1] / "runtime"
 sys.path.insert(0, str(RUNTIME_PATH))
 
 from agent_graph import NotebookAgentGraph  # noqa: E402
+from checkpoint_store import SQLiteCheckpointStore  # noqa: E402
 
 
 class FakeAgent:
@@ -77,6 +78,22 @@ class AgentGraphTests(unittest.TestCase):
         )
 
         self.assertEqual(len(pending["graphState"]["pending_tool_calls"]), 2)
+
+    def test_graph_can_resume_from_persisted_state(self):
+        with __import__("tempfile").TemporaryDirectory() as directory:
+            store = SQLiteCheckpointStore(Path(directory) / "state.sqlite3")
+            first_agent = FakeAgent()
+            first_graph = NotebookAgentGraph(first_agent, use_langgraph=False, checkpoint_store=store)
+            pending = first_graph.start("inspect", {}, [])
+
+            restarted_graph = NotebookAgentGraph(FakeAgent(), use_langgraph=False, checkpoint_store=store)
+            complete = restarted_graph.resume(
+                pending["graphState"]["thread_id"],
+                [{"ok": True, "cells": []}],
+            )
+
+            self.assertEqual(complete["status"], "complete")
+            self.assertEqual(complete["text"], "done")
 
 
 if __name__ == "__main__":

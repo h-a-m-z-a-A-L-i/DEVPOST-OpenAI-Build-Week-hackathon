@@ -6,6 +6,7 @@ from typing import Any, Callable
 
 from gemini_agent import GeminiError, NotebookAgent
 from graph_state import NotebookGraphState, build_initial_state
+from checkpoint_store import SQLiteCheckpointStore
 
 
 class NotebookAgentGraph:
@@ -15,8 +16,14 @@ class NotebookAgentGraph:
     when the model requests tools and resumes with the collected results.
     """
 
-    def __init__(self, agent: NotebookAgent, use_langgraph: bool = True) -> None:
+    def __init__(
+        self,
+        agent: NotebookAgent,
+        use_langgraph: bool = True,
+        checkpoint_store: SQLiteCheckpointStore | None = None,
+    ) -> None:
         self.agent = agent
+        self.checkpoint_store = checkpoint_store
         self._graph = _build_langgraph(agent) if use_langgraph else None
 
     def start(
@@ -55,19 +62,46 @@ class NotebookAgentGraph:
             next_state["on_text"] = on_text
         return self._invoke(next_state)
 
+    def resume(
+        self,
+        thread_id: str,
+        tool_results: list[dict[str, Any]],
+        on_text: Callable[[str], None] | None = None,
+    ) -> dict[str, Any]:
+        """Resume a persisted graph state after a process restart."""
+
+        if self.checkpoint_store is None:
+            raise GeminiError("Graph checkpointing is not configured.")
+        state = self.checkpoint_store.load(thread_id)
+        if state is None:
+            raise GeminiError("Graph checkpoint was not found or expired.")
+        return self.continue_session(state, tool_results, on_text)
+
     def _invoke(self, state: NotebookGraphState) -> dict[str, Any]:
         if self._graph is not None:
             result = self._graph.invoke(state)
         else:
             result = _agent_node(state, self.agent)
+        if self.checkpoint_store is not None:
+            graph_state = result if isinstance(result, dict) and result.get("thread_id") else None
+            if isinstance(graph_state, dict):
+                self.checkpoint_store.save(graph_state["thread_id"], graph_state)
         return _state_to_result(result)
 
 
 def _agent_node(state: NotebookGraphState, agent: NotebookAgent) -> NotebookGraphState:
     on_text = state.get("on_text")
     if state.get("status") == "tool_results_ready":
+        session_id = state["agent_session_id"]
+        persisted_session = state.get("agent_session")
+        if (
+            persisted_session
+            and hasattr(agent, "restore_session")
+            and session_id not in getattr(agent, "sessions", {})
+        ):
+            agent.restore_session(session_id, persisted_session)
         result = agent.continue_session(
-            state["agent_session_id"],
+            session_id,
             {"toolResults": state.get("tool_results", [])},
             on_text,
         )
@@ -79,10 +113,14 @@ def _agent_node(state: NotebookGraphState, agent: NotebookAgent) -> NotebookGrap
             state.get("history", []),
             on_text,
         )
-    return _merge_agent_result(state, result)
+    return _merge_agent_result(state, result, agent)
 
 
-def _merge_agent_result(state: NotebookGraphState, result: dict[str, Any]) -> NotebookGraphState:
+def _merge_agent_result(
+    state: NotebookGraphState,
+    result: dict[str, Any],
+    agent: NotebookAgent,
+) -> NotebookGraphState:
     next_state = dict(state)
     next_state["agent_session_id"] = result.get("sessionId", state.get("agent_session_id", ""))
     next_state["round_count"] = result.get("round", state.get("round_count", 0))
@@ -93,6 +131,11 @@ def _merge_agent_result(state: NotebookGraphState, result: dict[str, Any]) -> No
     next_state["final_response"] = result.get("text", "")
     next_state["streamed_text"] = result.get("text", "")
     next_state["result"] = result
+    session_id = next_state["agent_session_id"]
+    if next_state["status"] == "waiting_for_tools" and hasattr(agent, "export_session"):
+        next_state["agent_session"] = agent.export_session(session_id)
+    else:
+        next_state["agent_session"] = {}
     return next_state
 
 

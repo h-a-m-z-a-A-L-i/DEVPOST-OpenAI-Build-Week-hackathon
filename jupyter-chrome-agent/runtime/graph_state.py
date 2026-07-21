@@ -28,6 +28,7 @@ class NotebookGraphState(TypedDict, total=False):
     request_count: int
     final_response: str
     agent_session_id: str
+    agent_session: dict[str, Any]
     streamed_text: str
     on_text: Any
     result: dict[str, Any]
@@ -88,6 +89,7 @@ def build_initial_state(
         "request_count": 0,
         "final_response": "",
         "agent_session_id": "",
+        "agent_session": {},
         "streamed_text": "",
         "status": "ready",
     }
