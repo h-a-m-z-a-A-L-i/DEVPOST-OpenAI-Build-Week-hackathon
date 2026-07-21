@@ -1,14 +1,20 @@
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
 
-IGNORED_DIRECTORIES = {".git", "node_modules", ".venv", "venv", "__pycache__"}
+IGNORED_DIRECTORIES = {
+    ".git", "node_modules", ".venv", "venv", "__pycache__", ".cache", ".conda",
+    "AppData", "Application Data", "Local Settings",
+}
 MAX_SOURCE_CHARS = 12000
 MAX_OUTPUT_CHARS = 8000
 MAX_CONTEXT_CHARS = 60000
+SERVER_ROOT_CACHE_TTL = 30.0
+_server_root_cache: tuple[float, Path] | None = None
 
 
 def load_dotenv() -> None:
@@ -31,9 +37,13 @@ def load_dotenv() -> None:
 
 
 def discover_server_root() -> Path:
+    global _server_root_cache
     configured_root = os.getenv("JUPYTER_ROOT_DIR") or os.getenv("JUPYTER_SERVER_ROOT")
     if configured_root:
         return Path(configured_root).expanduser().resolve()
+
+    if _server_root_cache and time.monotonic() - _server_root_cache[0] < SERVER_ROOT_CACHE_TTL:
+        return _server_root_cache[1]
 
     result = subprocess.run(
         ["python", "-m", "jupyter", "server", "list"],
@@ -44,19 +54,27 @@ def discover_server_root() -> Path:
     )
     for line in result.stdout.splitlines():
         if " :: " in line:
-            return Path(line.rsplit(" :: ", 1)[1].strip()).resolve()
+            root = Path(line.rsplit(" :: ", 1)[1].strip()).resolve()
+            _server_root_cache = (time.monotonic(), root)
+            return root
 
     raise RuntimeError("No running Jupyter server was found or its root could not be discovered.")
 
 
 def find_notebooks(root: Path, notebook_name: str) -> list[Path]:
     matches: list[Path] = []
-    for path in root.rglob(notebook_name):
-        if not path.is_file() or path.suffix.lower() != ".ipynb":
-            continue
-        if any(part in IGNORED_DIRECTORIES for part in path.parts):
-            continue
-        matches.append(path)
+    target = Path(notebook_name).name.lower()
+    direct_match = root / Path(notebook_name).name
+    if direct_match.is_file():
+        matches.append(direct_match)
+    for directory, child_directories, filenames in os.walk(root, followlinks=False, onerror=lambda _error: None):
+        child_directories[:] = [
+            child for child in child_directories
+            if child not in IGNORED_DIRECTORIES
+        ]
+        for filename in filenames:
+            if filename.lower() == target and filename.lower().endswith(".ipynb") and Path(directory) / filename != direct_match:
+                matches.append(Path(directory) / filename)
     return sorted(matches)
 
 

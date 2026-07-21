@@ -4,6 +4,7 @@ const TARGET_KEY = 'activeJupyterTarget';
 const SETTINGS_KEY = 'extensionSettings';
 const MAX_HISTORY_MESSAGES = 100;
 const MAX_AGENT_ROUNDS = 15;
+const BRIDGE_REQUEST_TIMEOUT_MS = 60000;
 const AGENT_REQUEST_TIMEOUT_MS = 120000;
 const FRONTEND_TOOL_TIMEOUT_MS = 120000;
 const pendingFrontendRequests = new Map();
@@ -188,7 +189,7 @@ async function getNotebookContext() {
   }
 
   const url = `http://127.0.0.1:8765/api/context?name=${encodeURIComponent(notebookName)}`;
-  const response = await fetchWithTimeout(url);
+  const response = await fetchWithTimeout(url, {}, BRIDGE_REQUEST_TIMEOUT_MS);
   const payload = await response.json();
   if (!response.ok || !payload.ok) {
     throw new Error(payload.error || `Bridge request failed with status ${response.status}.`);
