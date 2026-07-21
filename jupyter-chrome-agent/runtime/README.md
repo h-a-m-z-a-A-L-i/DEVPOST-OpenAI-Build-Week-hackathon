@@ -19,6 +19,12 @@ The runtime listens on `http://127.0.0.1:8766`.
 
 The start endpoint returns either a final response or a pending Gemini function call. The extension executes the tool through the JupyterLab frontend bridge, then sends the structured result to `/api/chat/continue`.
 
+The graph API is available through `/api/graph/start`, `/api/graph/continue`,
+and `/api/graph/resume`, with `-stream` variants for text deltas. These routes
+are additive; existing `/api/chat/*` clients keep using the original session
+contract. Set `NOTEBOOKPILOT_CHECKPOINT_DB` to enable `/api/graph/resume` after
+a runtime restart.
+
 Gemini is the default provider. Set `LLM_PROVIDER=codex`, `CODEX_API_KEY`, and
 optionally `CODEX_MODEL` and `CODEX_BASE_URL` to use an OpenAI-compatible
 Codex gateway. Credentials remain local to the Python runtime.

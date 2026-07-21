@@ -143,8 +143,13 @@ def _state_to_result(state: NotebookGraphState) -> dict[str, Any]:
     result = state.get("result")
     if not isinstance(result, dict):
         raise GeminiError("Agent graph returned no result.")
-    result["graphState"] = state
-    return result
+    public_state = {
+        key: value for key, value in state.items()
+        if key not in {"on_text", "result"}
+    }
+    public_result = dict(result)
+    public_result["graphState"] = public_state
+    return public_result
 
 
 def _build_langgraph(agent: NotebookAgent):

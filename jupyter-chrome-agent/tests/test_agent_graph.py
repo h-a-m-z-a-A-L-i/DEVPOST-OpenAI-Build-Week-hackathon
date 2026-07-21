@@ -46,6 +46,7 @@ class AgentGraphTests(unittest.TestCase):
         )
 
         self.assertEqual(pending["status"], "tool_call")
+        self.assertNotIn("on_text", pending["graphState"])
         self.assertEqual(pending["graphState"]["status"], "waiting_for_tools")
         self.assertTrue(pending["graphState"]["thread_id"].startswith("notebookpilot-"))
         self.assertEqual(pending["graphState"]["pending_tool_calls"][0]["name"], "list_cells")

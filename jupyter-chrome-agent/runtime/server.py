@@ -4,6 +4,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from gemini_agent import GeminiError, NotebookAgent
+from agent_graph import NotebookAgentGraph
+from checkpoint_store import SQLiteCheckpointStore
 from tool_contracts import NOTEBOOK_TOOLS
 
 
@@ -22,6 +24,9 @@ def load_dotenv() -> None:
 
 load_dotenv()
 agent = NotebookAgent()
+checkpoint_path = os.environ.get("NOTEBOOKPILOT_CHECKPOINT_DB", "").strip()
+checkpoint_store = SQLiteCheckpointStore(checkpoint_path) if checkpoint_path else None
+graph_agent = NotebookAgentGraph(agent, checkpoint_store=checkpoint_store)
 
 
 class RuntimeHandler(BaseHTTPRequestHandler):
@@ -50,6 +55,24 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                     on_text=lambda text: emit({"type": "text_delta", "text": text}),
                 ))
                 return
+            if self.path == "/api/graph/start-stream":
+                self.stream_agent(lambda emit: graph_agent.start(
+                    body["prompt"],
+                    body["context"],
+                    NOTEBOOK_TOOLS,
+                    body.get("history", []),
+                    on_text=lambda text: emit({"type": "text_delta", "text": text}),
+                    notebook_path=body.get("notebookPath", "active-notebook"),
+                    conversation_id=body.get("conversationId", "default"),
+                ))
+                return
+            if self.path == "/api/graph/continue-stream":
+                self.stream_agent(lambda emit: graph_agent.continue_session(
+                    body["graphState"],
+                    body["toolResults"],
+                    on_text=lambda text: emit({"type": "text_delta", "text": text}),
+                ))
+                return
             if self.path == "/api/chat/continue-stream":
                 self.stream_agent(lambda emit: agent.continue_session(
                     body["sessionId"],
@@ -64,6 +87,22 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                     NOTEBOOK_TOOLS,
                     body.get("history", []),
                 ))
+                return
+            if self.path == "/api/graph/start":
+                self.respond(graph_agent.start(
+                    body["prompt"],
+                    body["context"],
+                    NOTEBOOK_TOOLS,
+                    body.get("history", []),
+                    notebook_path=body.get("notebookPath", "active-notebook"),
+                    conversation_id=body.get("conversationId", "default"),
+                ))
+                return
+            if self.path == "/api/graph/continue":
+                self.respond(graph_agent.continue_session(body["graphState"], body["toolResults"]))
+                return
+            if self.path == "/api/graph/resume":
+                self.respond(graph_agent.resume(body["threadId"], body["toolResults"]))
                 return
             if self.path == "/api/chat/continue":
                 self.respond(agent.continue_session(body["sessionId"], body["toolResult"]))
