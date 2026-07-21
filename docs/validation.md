@@ -1,35 +1,42 @@
-# Validation Workflow
+# NotebookPilot Validation
 
-## Offline checks
+Phase 5 uses two layers of validation:
 
-Run from the repository root:
+- Automated parser and agent tests run without a browser or network.
+- The notebook validator reports cell counts, error cells, context size, truncation, and parse time for real `.ipynb` files.
+
+Run the automated suite:
 
 ```powershell
-python -m unittest discover -s jupyter-chrome-agent/tests -v
+cd jupyter-chrome-agent
+python -m unittest discover -s tests -v
+```
+
+Validate a demonstration notebook or directory:
+
+```powershell
+python scripts/validate_notebooks.py "..\Test notebook" --json
+```
+
+The workflow fixture covers exploratory analysis, feature engineering, model
+training, visualization, and a visible `NameError` recovery case. The runner
+does not execute notebook code; kernel execution must be tested separately in
+JupyterLab using the frontend bridge.
+
+Additional offline checks from the repository root:
+
+```powershell
 python -m py_compile jupyter-chrome-agent/bridge/*.py jupyter-chrome-agent/runtime/*.py
 node --check jupyter-chrome-agent/service-worker.js
 node --check jupyter-chrome-agent/inpage-panel.js
 ```
 
-Run the JupyterLab bridge checks:
-
-```powershell
-cd jupyter-chrome-agent/jupyterlab-bridge
-npm run check-types
-npm run build
-```
-
-These checks do not call Gemini and do not modify the test notebook.
-
-## Live smoke test
+For live testing:
 
 1. Start JupyterLab at `http://localhost:8888/lab`.
-2. Start the local notebook bridge on port `8765`.
-3. Start the Gemini runtime on port `8766`.
-4. Reload the unpacked Chrome extension.
-5. Open a notebook and confirm the floating panel identifies it.
-6. Ask the agent to list cells.
-7. Ask it to insert, edit, and run a small cell.
-8. Confirm outputs appear without refreshing JupyterLab.
+2. Reload the unpacked Chrome extension.
+3. Open a notebook and confirm the floating panel identifies it.
+4. Ask the agent to list cells, inspect errors, and run a small cell.
+5. Confirm outputs appear without refreshing JupyterLab.
 
-Live testing consumes Gemini quota and should be run only after the offline checks pass.
+Live testing consumes Gemini quota and should be run only after offline checks pass.
