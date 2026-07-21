@@ -5,6 +5,7 @@ const SETTINGS_KEY = 'extensionSettings';
 const MAX_HISTORY_MESSAGES = 100;
 const MAX_AGENT_ROUNDS = 15;
 const BRIDGE_REQUEST_TIMEOUT_MS = 60000;
+const FRONTEND_IDENTITY_TIMEOUT_MS = 5000;
 const AGENT_REQUEST_TIMEOUT_MS = 120000;
 const FRONTEND_TOOL_TIMEOUT_MS = 120000;
 const pendingFrontendRequests = new Map();
@@ -176,7 +177,7 @@ async function getNotebookContext() {
   }
   let liveNotebookPath;
   try {
-    const live = await executeFrontendTool(target, { name: 'get_active_notebook', args: {} });
+    const live = await executeFrontendTool(target, { name: 'get_active_notebook', args: {} }, FRONTEND_IDENTITY_TIMEOUT_MS);
     if (live?.ok && live.result?.path) {
       liveNotebookPath = live.result.path;
     }
@@ -184,7 +185,10 @@ async function getNotebookContext() {
     // Fall back to filename resolution when the frontend bridge is unavailable.
   }
   if (!liveNotebookPath && target.resolveStatus === 'ambiguous') {
-    throw new Error(`Notebook name is ambiguous. Matches: ${(target.candidates ?? []).join(', ')}`);
+    throw new Error(
+      `The JupyterLab frontend bridge did not provide the active notebook path. ` +
+      `Reload the extension and refresh JupyterLab. Filename matches: ${(target.candidates ?? []).join(', ')}`
+    );
   }
 
   const query = new URLSearchParams({ name: notebookName });
@@ -271,7 +275,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
   }
 }
 
-async function executeFrontendTool(target, functionCall) {
+async function executeFrontendTool(target, functionCall, timeoutMs = FRONTEND_TOOL_TIMEOUT_MS) {
   if (!target?.tabId || !target.notebookName) {
     throw new Error('No active notebook target is available.');
   }
@@ -296,7 +300,7 @@ async function executeFrontendTool(target, functionCall) {
     const timer = setTimeout(() => {
       pendingFrontendRequests.delete(requestId);
       reject(new Error('Frontend tool request timed out.'));
-    }, FRONTEND_TOOL_TIMEOUT_MS);
+    }, timeoutMs);
     pendingFrontendRequests.set(requestId, { resolve, reject, timer });
   });
 

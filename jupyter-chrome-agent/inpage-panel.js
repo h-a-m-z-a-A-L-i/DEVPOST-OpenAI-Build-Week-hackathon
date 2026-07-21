@@ -234,7 +234,15 @@
   }
 
   async function runAgent(prompt) {
-    const response = await chrome.runtime.sendMessage({ type: 'agent-start', prompt });
+    let response;
+    try {
+      response = await chrome.runtime.sendMessage({ type: 'agent-start', prompt });
+    } catch (error) {
+      if (activeComposer) activeComposer.disabled = false;
+      if (activeActivityMessage) activeActivityMessage.classList.add('error');
+      addPanelMessage(error?.message || 'The extension service worker did not respond.', 'assistant');
+      return;
+    }
     if (activeComposer) activeComposer.disabled = false;
     if (!response?.ok) {
       if (activeActivityMessage) activeActivityMessage.classList.add('error');
