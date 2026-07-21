@@ -120,9 +120,9 @@
     `;
     const polish = document.createElement('style');
     polish.textContent = `
-      .toggle { width: 54px !important; height: 54px !important; border: 3px solid rgba(255,255,255,.78) !important; border-radius: 18px !important; background: linear-gradient(135deg, #8bf0b0, #40c879) !important; box-shadow: 0 10px 28px rgba(65,205,126,.35) !important; transition: transform .18s ease, box-shadow .18s ease; }
+      .toggle { width: 54px !important; height: 54px !important; border: 3px solid rgba(255,255,255,.78) !important; border-radius: 18px !important; background: linear-gradient(135deg, #8bf0b0, #40c879) !important; box-shadow: 0 10px 28px rgba(65,205,126,.35) !important; transition: transform .18s ease, box-shadow .18s ease; touch-action: none !important; }
       .toggle:hover { transform: translateY(-3px) rotate(-2deg); box-shadow: 0 15px 34px rgba(65,205,126,.48) !important; }
-      .panel { width: min(380px, calc(100vw - 28px)) !important; height: min(540px, calc(100vh - 28px)) !important; border-radius: 20px !important; background: linear-gradient(160deg, #172235 0%, #0d1420 100%) !important; box-shadow: 0 18px 48px rgba(0,0,0,.42) !important; }
+      .panel { top: 12px !important; right: 12px !important; bottom: 12px !important; width: min(420px, calc(100vw - 24px)) !important; height: auto !important; border-radius: 20px !important; background: linear-gradient(160deg, #172235 0%, #0d1420 100%) !important; box-shadow: 0 18px 48px rgba(0,0,0,.42) !important; }
       .header { padding: 16px 17px !important; background: rgba(35,51,74,.88) !important; border-bottom: 1px solid rgba(127,157,196,.18); }
       .title { font-size: 14px !important; font-weight: 800 !important; } .subtitle { color: #9badc4 !important; font-size: 10px !important; }
         .panel-action, .close { color: #a9bad1 !important; background: rgba(255,255,255,.06) !important; border: 1px solid rgba(255,255,255,.1) !important; }
@@ -170,10 +170,37 @@
     shadowRoot.querySelector('.subtitle').textContent = 'Your local JupyterLab copilot';
     shadowRoot.querySelector('.messages .message').textContent = 'Connected to this notebook. Ask me to inspect, edit, or run a cell.';
 
+    let toggleDragState;
+    let suppressToggleClick = false;
     toggle.addEventListener('click', event => {
       event.stopPropagation();
+      if (suppressToggleClick) {
+        suppressToggleClick = false;
+        return;
+      }
       panel.classList.add('open');
       toggle.classList.add('hidden');
+    });
+    toggle.addEventListener('pointerdown', event => {
+      event.stopPropagation();
+      toggleDragState = { startX: event.clientX, startY: event.clientY, moved: false };
+      toggle.setPointerCapture(event.pointerId);
+    });
+    toggle.addEventListener('pointermove', event => {
+      if (!toggleDragState) return;
+      const deltaX = event.clientX - toggleDragState.startX;
+      const deltaY = event.clientY - toggleDragState.startY;
+      if (Math.abs(deltaX) + Math.abs(deltaY) < 4) return;
+      toggleDragState.moved = true;
+      const rect = toggle.getBoundingClientRect();
+      toggle.style.left = `${Math.max(8, Math.min(window.innerWidth - rect.width - 8, event.clientX - rect.width / 2))}px`;
+      toggle.style.top = `${Math.max(8, Math.min(window.innerHeight - rect.height - 8, event.clientY - rect.height / 2))}px`;
+      toggle.style.right = 'auto';
+      toggle.style.bottom = 'auto';
+    });
+    toggle.addEventListener('pointerup', () => {
+      if (toggleDragState?.moved) suppressToggleClick = true;
+      toggleDragState = undefined;
     });
     close.addEventListener('click', event => {
       event.stopPropagation();
