@@ -17,9 +17,12 @@ class GeminiClient:
     def __init__(self) -> None:
         self.api_key = os.environ.get("GEMINI_API_KEY", "")
         self.model = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
-        self.max_output_tokens = min(int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "4096")), 4096)
-        self.min_interval = 4.0
+        self.max_output_tokens = min(int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "65536")), 65536)
+        self.min_interval = 2.0
+        self.daily_request_limit = int(os.environ.get("GEMINI_RPD", "1500"))
         self._last_request = 0.0
+        self._request_day = ""
+        self._daily_requests = 0
         self._lock = threading.Lock()
 
     def generate(self, contents: list[dict[str, Any]], tools: list[dict[str, Any]]) -> dict[str, Any]:
@@ -27,11 +30,7 @@ class GeminiClient:
             raise GeminiError("GEMINI_API_KEY is not configured.")
 
         with self._lock:
-            wait = self.min_interval - (time.monotonic() - self._last_request)
-            if wait > 0:
-                time.sleep(wait)
-            request_started = time.monotonic()
-            self._last_request = request_started
+            self._reserve_request()
             response = requests.post(
                 f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent",
                 params={"key": self.api_key},
@@ -57,11 +56,7 @@ class GeminiClient:
             raise GeminiError("GEMINI_API_KEY is not configured.")
 
         with self._lock:
-            wait = self.min_interval - (time.monotonic() - self._last_request)
-            if wait > 0:
-                time.sleep(wait)
-            request_started = time.monotonic()
-            self._last_request = request_started
+            self._reserve_request()
             response = requests.post(
                 f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:streamGenerateContent",
                 params={"key": self.api_key, "alt": "sse"},
@@ -108,6 +103,19 @@ class GeminiClient:
             parts.append({"functionCall": function_call})
         return {"candidates": [{"content": {"role": "model", "parts": parts}}]}
 
+    def _reserve_request(self):
+        request_day = time.strftime("%Y-%m-%d", time.gmtime())
+        if request_day != self._request_day:
+            self._request_day = request_day
+            self._daily_requests = 0
+        if self._daily_requests >= self.daily_request_limit:
+            raise GeminiError("The daily Gemini request limit of 1,500 has been reached.")
+        wait = self.min_interval - (time.monotonic() - self._last_request)
+        if wait > 0:
+            time.sleep(wait)
+        self._last_request = time.monotonic()
+        self._daily_requests += 1
+
 
 class CodexClient:
     """OpenAI-compatible client for Codex or a compatible local gateway."""
@@ -116,8 +124,8 @@ class CodexClient:
         self.api_key = os.environ.get("CODEX_API_KEY", "")
         self.model = os.environ.get("CODEX_MODEL", "gpt-4.1-mini")
         self.base_url = os.environ.get("CODEX_BASE_URL", "https://api.openai.com/v1").rstrip("/")
-        self.max_output_tokens = min(int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "4096")), 4096)
-        self.min_interval = 4.0
+        self.max_output_tokens = min(int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "65536")), 65536)
+        self.min_interval = 2.0
         self._last_request = 0.0
         self._lock = threading.Lock()
 
@@ -324,7 +332,7 @@ def build_prompt(prompt: str, context: dict[str, Any], history: list[dict[str, A
 
 
 def compress_context(context: dict[str, Any]) -> dict[str, Any]:
-    limit = int(os.environ.get("LLM_CONTEXT_MAX_CHARS", "120000"))
+    limit = int(os.environ.get("LLM_CONTEXT_MAX_CHARS", "3500000"))
     compact = deepcopy(context)
     cells = compact.get("cells", [])
     if not isinstance(cells, list):
@@ -339,7 +347,7 @@ def compress_context(context: dict[str, Any]) -> dict[str, Any]:
             "index": cell.get("index"),
             "id": cell.get("id"),
             "type": cell.get("type"),
-            "source": str(cell.get("source", ""))[:8000],
+            "source": str(cell.get("source", ""))[:24000],
             "executionCount": cell.get("executionCount"),
             "outputs": compact_outputs(cell.get("outputs", [])),
         }
@@ -370,7 +378,7 @@ def compact_outputs(outputs: Any) -> list[dict[str, Any]]:
             continue
         item = {key: value for key, value in output.items() if key in {"type", "output_type", "name", "ename", "evalue"}}
         if "text" in output:
-            item["text"] = str(output["text"])[:3000]
+            item["text"] = str(output["text"])[:6000]
         if "error" in output:
             item["error"] = output["error"]
         compacted.append(item)

@@ -207,7 +207,7 @@ async function getNotebookContext() {
       if (Array.isArray(live.result.cells)) {
         return {
           ...live.result,
-          context: { maxChars: 60000, truncated: false, source: 'jupyterlab-live-model' },
+          context: { maxChars: 3500000, truncated: false, source: 'jupyterlab-live-model' },
         };
       }
     }

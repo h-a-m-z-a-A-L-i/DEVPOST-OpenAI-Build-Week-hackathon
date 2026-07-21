@@ -1,12 +1,13 @@
 import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 
 RUNTIME_PATH = Path(__file__).parents[1] / "runtime"
 sys.path.insert(0, str(RUNTIME_PATH))
 
-from gemini_agent import NotebookAgent, build_prompt, compress_context, normalize_codex_response  # noqa: E402
+from gemini_agent import GeminiClient, NotebookAgent, build_prompt, compress_context, normalize_codex_response  # noqa: E402
 from tool_contracts import NOTEBOOK_TOOLS  # noqa: E402
 
 
@@ -64,6 +65,14 @@ class BatchedToolClient:
 
 
 class GeminiAgentTests(unittest.TestCase):
+    def test_gemini_quota_defaults(self):
+        client = GeminiClient()
+
+        self.assertEqual(client.min_interval, 2.0)
+        self.assertEqual(client.daily_request_limit, 1500)
+        self.assertGreater(client.max_output_tokens, 0)
+        self.assertLessEqual(client.max_output_tokens, 65536)
+
     def test_agent_continues_after_tool_result(self):
         agent = NotebookAgent(FakeGeminiClient())
         pending = agent.start("Summarize the notebook.", {"cells": []}, NOTEBOOK_TOOLS)
@@ -86,7 +95,8 @@ class GeminiAgentTests(unittest.TestCase):
 
     def test_context_compression_reports_omitted_cells(self):
         context = {"cells": [{"index": index, "source": "x" * 8000, "outputs": []} for index in range(30)]}
-        compressed = compress_context(context)
+        with patch.dict("os.environ", {"LLM_CONTEXT_MAX_CHARS": "120000"}):
+            compressed = compress_context(context)
 
         self.assertTrue(compressed["contextSummary"]["truncated"])
         self.assertLess(len(compressed["cells"]), 30)

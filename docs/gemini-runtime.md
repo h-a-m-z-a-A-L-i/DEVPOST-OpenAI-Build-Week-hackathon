@@ -4,19 +4,21 @@ The Gemini runtime is a local Python service. Chrome never receives `GEMINI_API_
 
 ## Agent lifecycle
 
-1. Chrome sends the user prompt and normalized notebook context to `/api/chat/start`.
+1. Chrome sends the user prompt and normalized notebook context to `/api/chat/start-stream`.
 2. Gemini returns either text or a function call.
 3. Chrome forwards the function call to the JupyterLab frontend bridge.
-4. Chrome sends the structured tool result to `/api/chat/continue`.
+4. Chrome sends the structured tool result to `/api/chat/continue-stream`.
 5. The runtime resumes the same session until Gemini returns final text.
 
 ## Limits
 
 - Model comes from `GEMINI_MODEL`.
-- Minimum request spacing comes from `GEMINI_REACT_MIN_INTERVAL_SEC`.
-- Output size comes from `GEMINI_MAX_OUTPUT_TOKENS`.
+- The runtime enforces 30 RPM with a 2-second minimum request interval.
+- The runtime enforces a process-local 1,500 RPD budget from `GEMINI_RPD`.
+- Output size defaults to 65,536 tokens and is capped by `GEMINI_MAX_OUTPUT_TOKENS`.
+- Notebook context supports an approximately 3.5-million-character budget from `LLM_CONTEXT_MAX_CHARS`.
 - Agent rounds come from `LLM_REACT_MAX_ROUNDS`.
-- The runtime performs sequential calls.
+- Independent tool calls can be batched; dependent mutations remain sequential.
 - Notebook context is compressed with a cell-count summary before prompting.
 - The last bounded conversation messages are included for continuity.
 - Sessions expire automatically and repeated tool failures stop the agent safely.

@@ -10,9 +10,9 @@ IGNORED_DIRECTORIES = {
     ".git", "node_modules", ".venv", "venv", "__pycache__", ".cache", ".conda",
     "AppData", "Application Data", "Local Settings",
 }
-MAX_SOURCE_CHARS = 12000
-MAX_OUTPUT_CHARS = 8000
-MAX_CONTEXT_CHARS = 60000
+MAX_SOURCE_CHARS = 24000
+MAX_OUTPUT_CHARS = 16000
+MAX_CONTEXT_CHARS = 3500000
 SERVER_ROOT_CACHE_TTL = 30.0
 _server_root_cache: tuple[float, Path] | None = None
 

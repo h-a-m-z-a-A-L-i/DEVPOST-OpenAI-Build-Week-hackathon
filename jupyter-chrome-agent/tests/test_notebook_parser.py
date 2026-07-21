@@ -1,4 +1,5 @@
 import json
+from unittest.mock import patch
 import sys
 import tempfile
 import unittest
@@ -53,7 +54,8 @@ class NotebookParserTests(unittest.TestCase):
     def test_limits_large_context(self):
         with tempfile.TemporaryDirectory() as directory:
             cells = [{"cell_type": "code", "source": "x" * 12000, "outputs": []} for _ in range(8)]
-            context = build_context(self.write_notebook(Path(directory), "large.ipynb", cells))
+            with patch("notebook_parser.MAX_CONTEXT_CHARS", 60000):
+                context = build_context(self.write_notebook(Path(directory), "large.ipynb", cells))
 
             self.assertTrue(context["context"]["truncated"])
             self.assertTrue(any("omitted" in cell["source"] for cell in context["cells"]))
