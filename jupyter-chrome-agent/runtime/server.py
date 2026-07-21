@@ -48,7 +48,7 @@ class RuntimeHandler(BaseHTTPRequestHandler):
                 self.respond(agent.continue_session(body["sessionId"], body["toolResult"]))
                 return
             self.respond({"ok": False, "error": "Not found"}, 404)
-        except (KeyError, TypeError) as error:
+        except (KeyError, TypeError, ValueError) as error:
             self.respond({"ok": False, "error": f"Invalid request: {error}"}, 400)
         except GeminiError as error:
             self.respond({"ok": False, "error": str(error)}, 502)
@@ -74,4 +74,10 @@ class RuntimeHandler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print("NotebookPilot Gemini runtime listening on http://127.0.0.1:8766")
-    ThreadingHTTPServer(("127.0.0.1", 8766), RuntimeHandler).serve_forever()
+    server = ThreadingHTTPServer(("127.0.0.1", 8766), RuntimeHandler)
+    server.daemon_threads = True
+    server.allow_reuse_address = True
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()

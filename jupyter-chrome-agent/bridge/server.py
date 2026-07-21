@@ -6,6 +6,13 @@ from urllib.parse import parse_qs, urlparse
 from notebook_parser import build_context as build_notebook_context, discover_server_root, find_notebooks, parse_notebook
 
 
+class BridgeError(RuntimeError):
+    def __init__(self, message, status=500, **details):
+        super().__init__(message)
+        self.status = status
+        self.details = details
+
+
 class BridgeHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(204)
@@ -28,8 +35,10 @@ class BridgeHandler(BaseHTTPRequestHandler):
                 self.handle_context(query.get("name", [""])[0])
                 return
             self.respond({"ok": False, "error": "Not found"}, 404)
+        except BridgeError as error:
+            self.respond({"ok": False, "error": str(error), **error.details}, error.status)
         except Exception as error:
-            self.respond({"ok": False, "error": str(error)}, 500)
+            self.respond({"ok": False, "error": f"Bridge failure: {error}"}, 503)
 
     def handle_notebook(self, notebook_name: str):
         self.handle_resolved_notebook(notebook_name, use_context=False)
@@ -42,20 +51,24 @@ class BridgeHandler(BaseHTTPRequestHandler):
             self.respond({"ok": False, "error": "A .ipynb notebook name is required."}, 400)
             return
 
-        root = discover_server_root()
+        try:
+            root = discover_server_root()
+        except Exception as error:
+            raise BridgeError(f"Unable to discover the Jupyter server root: {error}", 503) from error
         matches = find_notebooks(root, Path(notebook_name).name)
         if not matches:
-            self.respond({"ok": False, "error": f"Notebook not found under {root}."}, 404)
-            return
+            raise BridgeError(f"Notebook not found under {root}.", 404)
         if len(matches) > 1:
-            self.respond({
-                "ok": False,
-                "error": "Notebook name is ambiguous.",
-                "candidates": [str(path) for path in matches],
-            }, 409)
-            return
+            raise BridgeError(
+                "Notebook name is ambiguous.",
+                409,
+                candidates=[str(path) for path in matches],
+            )
 
-        parsed = build_notebook_context(matches[0]) if use_context else parse_notebook(matches[0])
+        try:
+            parsed = build_notebook_context(matches[0]) if use_context else parse_notebook(matches[0])
+        except (OSError, ValueError) as error:
+            raise BridgeError(f"Notebook could not be parsed: {error}", 422) from error
         self.respond({"ok": True, "notebook": parsed})
 
     def respond(self, payload, status=200):
@@ -73,4 +86,10 @@ class BridgeHandler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print("Jupyter notebook bridge listening on http://127.0.0.1:8765")
-    ThreadingHTTPServer(("127.0.0.1", 8765), BridgeHandler).serve_forever()
+    server = ThreadingHTTPServer(("127.0.0.1", 8765), BridgeHandler)
+    server.daemon_threads = True
+    server.allow_reuse_address = True
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()
