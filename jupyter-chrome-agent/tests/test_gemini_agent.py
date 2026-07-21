@@ -6,7 +6,7 @@ from pathlib import Path
 RUNTIME_PATH = Path(__file__).parents[1] / "runtime"
 sys.path.insert(0, str(RUNTIME_PATH))
 
-from gemini_agent import NotebookAgent  # noqa: E402
+from gemini_agent import NotebookAgent, normalize_codex_response  # noqa: E402
 from tool_contracts import NOTEBOOK_TOOLS  # noqa: E402
 
 
@@ -39,6 +39,16 @@ class GeminiAgentTests(unittest.TestCase):
 
         self.assertEqual(final["status"], "complete")
         self.assertIn("one cell", final["text"])
+
+    def test_normalizes_codex_tool_call(self):
+        response = normalize_codex_response({
+            "choices": [{"message": {"content": None, "tool_calls": [{
+                "function": {"name": "read_cell", "arguments": '{"cellId":"cell-a1b2"}'},
+            }]}}]
+        })
+
+        self.assertEqual(response["candidates"][0]["content"]["parts"][0]["functionCall"]["name"], "read_cell")
+        self.assertEqual(response["candidates"][0]["content"]["parts"][0]["functionCall"]["args"]["cellId"], "cell-a1b2")
 
 
 if __name__ == "__main__":

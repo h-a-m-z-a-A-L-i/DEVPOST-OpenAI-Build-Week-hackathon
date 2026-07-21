@@ -66,6 +66,8 @@ def parse_notebook(path: Path) -> dict[str, Any]:
     for index, cell in enumerate(notebook.get("cells", [])):
         cells.append({
             "index": index,
+            "id": cell.get("id"),
+            "stableId": isinstance(cell.get("id"), str) and bool(cell.get("id")),
             "type": cell.get("cell_type", "unknown"),
             "language": notebook.get("metadata", {}).get("kernelspec", {}).get("language", "python"),
             "source": truncate_text(join_value(cell.get("source", "")), MAX_SOURCE_CHARS),

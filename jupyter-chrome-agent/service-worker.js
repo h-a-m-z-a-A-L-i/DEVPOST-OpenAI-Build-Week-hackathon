@@ -4,6 +4,8 @@ const TARGET_KEY = 'activeJupyterTarget';
 const SETTINGS_KEY = 'extensionSettings';
 const MAX_HISTORY_MESSAGES = 100;
 const MAX_AGENT_ROUNDS = 15;
+const AGENT_REQUEST_TIMEOUT_MS = 120000;
+const FRONTEND_TOOL_TIMEOUT_MS = 120000;
 const pendingFrontendRequests = new Map();
 
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
@@ -181,6 +183,9 @@ async function getNotebookContext() {
   if (!notebookName) {
     throw new Error('No active notebook has been identified.');
   }
+  if (target.resolveStatus === 'ambiguous') {
+    throw new Error(`Notebook name is ambiguous. Matches: ${(target.candidates ?? []).join(', ')}`);
+  }
 
   const url = `http://127.0.0.1:8765/api/context?name=${encodeURIComponent(notebookName)}`;
   const response = await fetchWithTimeout(url);
@@ -226,7 +231,7 @@ async function postRuntime(path, body) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-  }, 30000);
+  }, AGENT_REQUEST_TIMEOUT_MS);
   const payload = await response.json();
   if (!response.ok || payload.ok === false) {
     throw new Error(payload.error || `Agent runtime failed with status ${response.status}.`);
@@ -236,9 +241,18 @@ async function postRuntime(path, body) {
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
   try {
     return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (timedOut) {
+      throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)} seconds: ${url}`);
+    }
+    throw error;
   } finally {
     clearTimeout(timer);
   }
@@ -247,6 +261,10 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
 async function executeFrontendTool(target, functionCall) {
   if (!target?.tabId || !target.notebookName) {
     throw new Error('No active notebook target is available.');
+  }
+  const current = await getTarget();
+  if (current?.tabId !== target.tabId || current.notebookName !== target.notebookName) {
+    throw new Error('The active notebook changed before the tool could run.');
   }
 
   const requestId = globalThis.crypto?.randomUUID?.() ?? `np-${Date.now()}-${Math.random()}`;
@@ -265,7 +283,7 @@ async function executeFrontendTool(target, functionCall) {
     const timer = setTimeout(() => {
       pendingFrontendRequests.delete(requestId);
       reject(new Error('Frontend tool request timed out.'));
-    }, 30000);
+    }, FRONTEND_TOOL_TIMEOUT_MS);
     pendingFrontendRequests.set(requestId, { resolve, reject, timer });
   });
 

@@ -42,13 +42,51 @@ class GeminiClient:
             self._last_request = time.monotonic()
 
         if not response.ok:
-            raise GeminiError(f"Gemini request failed with status {response.status_code}.")
+            raise GeminiError(format_provider_error("Gemini", response))
         return response.json()
+
+
+class CodexClient:
+    """OpenAI-compatible client for Codex or a compatible local gateway."""
+
+    def __init__(self) -> None:
+        self.api_key = os.environ.get("CODEX_API_KEY", "")
+        self.model = os.environ.get("CODEX_MODEL", "gpt-4.1-mini")
+        self.base_url = os.environ.get("CODEX_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+        self.max_output_tokens = int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "8192"))
+        self.min_interval = float(os.environ.get("GEMINI_REACT_MIN_INTERVAL_SEC", "4"))
+        self._last_request = 0.0
+        self._lock = threading.Lock()
+
+    def generate(self, contents: list[dict[str, Any]], tools: list[dict[str, Any]]) -> dict[str, Any]:
+        if not self.api_key:
+            raise GeminiError("CODEX_API_KEY is not configured.")
+
+        with self._lock:
+            wait = self.min_interval - (time.monotonic() - self._last_request)
+            if wait > 0:
+                time.sleep(wait)
+            response = requests.post(
+                f"{self.base_url}/chat/completions",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json={
+                    "model": self.model,
+                    "messages": codex_messages(contents),
+                    "tools": [{"type": "function", "function": tool} for tool in tools],
+                    "max_tokens": self.max_output_tokens,
+                },
+                timeout=90,
+            )
+            self._last_request = time.monotonic()
+
+        if not response.ok:
+            raise GeminiError(format_provider_error("Codex", response))
+        return normalize_codex_response(response.json())
 
 
 class NotebookAgent:
     def __init__(self, client: GeminiClient | None = None) -> None:
-        self.client = client or GeminiClient()
+        self.client = client or create_client()
         self.sessions: dict[str, dict[str, Any]] = {}
         self.max_rounds = int(os.environ.get("LLM_REACT_MAX_ROUNDS", "15"))
 
@@ -107,3 +145,62 @@ def build_prompt(prompt: str, context: dict[str, Any]) -> str:
         f"Notebook context:\n{json.dumps(context, ensure_ascii=False)}\n\n"
         f"User request:\n{prompt}"
     )
+
+
+def create_client():
+    provider = os.environ.get("LLM_PROVIDER", "gemini").strip().lower()
+    if provider in {"codex", "openai"}:
+        return CodexClient()
+    return GeminiClient()
+
+
+def format_provider_error(provider: str, response: requests.Response) -> str:
+    try:
+        detail = response.json().get("error", {}).get("message")
+    except (ValueError, AttributeError):
+        detail = None
+    suffix = f": {detail}" if detail else ""
+    return f"{provider} request failed with status {response.status_code}{suffix}."
+
+
+def codex_messages(contents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    messages = []
+    for content in contents:
+        role = content.get("role", "user")
+        parts = content.get("parts", [])
+        text = "\n".join(part["text"] for part in parts if part.get("text"))
+        calls = [part["functionCall"] for part in parts if part.get("functionCall")]
+        responses = [part["functionResponse"] for part in parts if part.get("functionResponse")]
+        if calls:
+            messages.append({
+                "role": "assistant",
+                "tool_calls": [
+                    {"id": f"call_{index}", "type": "function", "function": {
+                        "name": call["name"], "arguments": json.dumps(call.get("args", {}))
+                    }} for index, call in enumerate(calls)
+                ],
+            })
+        elif responses:
+            for response in responses:
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": "call_0",
+                    "content": json.dumps(response.get("response", {}).get("result", {}), ensure_ascii=False),
+                })
+        elif text:
+            messages.append({"role": "assistant" if role == "model" else role, "content": text})
+    return messages
+
+
+def normalize_codex_response(payload: dict[str, Any]) -> dict[str, Any]:
+    message = payload.get("choices", [{}])[0].get("message", {})
+    parts = []
+    if message.get("content"):
+        parts.append({"text": message["content"]})
+    for call in message.get("tool_calls", []):
+        try:
+            args = json.loads(call.get("function", {}).get("arguments", "{}"))
+        except json.JSONDecodeError as error:
+            raise GeminiError(f"Codex returned invalid tool arguments: {error}") from error
+        parts.append({"functionCall": {"name": call.get("function", {}).get("name"), "args": args}})
+    return {"candidates": [{"content": {"role": "model", "parts": parts}}]}

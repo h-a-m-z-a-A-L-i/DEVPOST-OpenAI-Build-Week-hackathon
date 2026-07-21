@@ -12,10 +12,12 @@ export const NOTEBOOK_TOOL_DEFINITIONS = [
   definition('get_active_notebook', 'Read the active notebook and its cells.', {}),
   definition('list_cells', 'List the active notebook cells without full outputs.', {}),
   definition('read_cell', 'Read one active notebook cell.', {
-    index: { type: 'integer', minimum: 0 }
+    index: { type: 'integer', minimum: 0 },
+    cellId: { type: 'string', minLength: 1 }
   }),
   definition('read_cell_output', 'Read one active notebook cell output.', {
-    index: { type: 'integer', minimum: 0 }
+    index: { type: 'integer', minimum: 0 },
+    cellId: { type: 'string', minLength: 1 }
   }),
   definition('insert_cell', 'Insert a new cell into the active notebook.', {
     index: { type: 'integer', minimum: 0 },
@@ -24,13 +26,16 @@ export const NOTEBOOK_TOOL_DEFINITIONS = [
   }),
   definition('edit_cell', 'Replace the source of an active notebook cell.', {
     index: { type: 'integer', minimum: 0 },
+    cellId: { type: 'string', minLength: 1 },
     source: { type: 'string', minLength: 1 }
   }),
   definition('delete_cell', 'Delete one active notebook cell.', {
-    index: { type: 'integer', minimum: 0 }
+    index: { type: 'integer', minimum: 0 },
+    cellId: { type: 'string', minLength: 1 }
   }),
   definition('run_cell', 'Execute one active notebook cell and return its result.', {
-    index: { type: 'integer', minimum: 0 }
+    index: { type: 'integer', minimum: 0 },
+    cellId: { type: 'string', minLength: 1 }
   })
 ] as const;
 
@@ -54,12 +59,15 @@ export function assertToolArguments(
     return;
   }
 
-  if (!Number.isInteger(args.index)) {
-    throw toolError('INVALID_ARGUMENT', 'A numeric cell index is required.');
+  if (args.cellId !== undefined && (typeof args.cellId !== 'string' || !args.cellId.trim())) {
+    throw toolError('INVALID_ARGUMENT', 'cellId must be a non-empty string.');
+  }
+  if (args.cellId === undefined && !Number.isInteger(args.index)) {
+    throw toolError('INVALID_ARGUMENT', 'A numeric cell index or cellId is required.');
   }
 
-  const index = args.index as number;
-  if (index < 0 || index > cellCount || (!isInsert && index === cellCount)) {
+  const index = args.index as number | undefined;
+  if (index !== undefined && (index < 0 || index > cellCount || (!isInsert && index === cellCount))) {
     throw toolError('INVALID_CELL_INDEX', `Cell index ${index} is outside the active notebook.`);
   }
 

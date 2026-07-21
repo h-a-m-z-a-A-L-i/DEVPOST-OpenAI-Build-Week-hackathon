@@ -18,3 +18,7 @@ The runtime listens on `http://127.0.0.1:8766`.
 - `POST /api/chat/continue`
 
 The start endpoint returns either a final response or a pending Gemini function call. The extension executes the tool through the JupyterLab frontend bridge, then sends the structured result to `/api/chat/continue`.
+
+Gemini is the default provider. Set `LLM_PROVIDER=codex`, `CODEX_API_KEY`, and
+optionally `CODEX_MODEL` and `CODEX_BASE_URL` to use an OpenAI-compatible
+Codex gateway. Credentials remain local to the Python runtime.

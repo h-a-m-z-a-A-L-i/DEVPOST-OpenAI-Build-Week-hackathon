@@ -116,17 +116,17 @@ async function executeTool(
     case 'list_cells':
       return snapshotNotebook(panel, false).cells;
     case 'read_cell':
-      return snapshotCell(panel, requireIndex(args));
+      return snapshotCell(panel, resolveIndex(panel, args));
     case 'read_cell_output':
-      return snapshotCell(panel, requireIndex(args), true).outputs;
+      return snapshotCell(panel, resolveIndex(panel, args), true).outputs;
     case 'insert_cell':
       return insertCell(panel, args);
     case 'edit_cell':
       return editCell(panel, args);
     case 'delete_cell':
-      return deleteCell(panel, requireIndex(args));
+      return deleteCell(panel, resolveIndex(panel, args));
     case 'run_cell':
-      return runCell(panel, requireIndex(args));
+      return runCell(panel, resolveIndex(panel, args));
     default:
       throw bridgeError('INVALID_TOOL', `Unknown tool: ${tool}.`, false);
   }
@@ -147,6 +147,7 @@ function snapshotCell(panel: NotebookPanel, index: number, outputsOnly = false, 
   const outputs = Array.isArray(json.outputs) ? json.outputs : [];
   return {
     index,
+    id: getCellId(cell),
     type: cell.model.type,
     source: outputsOnly || !includeSource ? undefined : truncate(String(json.source ?? '')),
     executionCount: json.execution_count ?? null,
@@ -164,7 +165,7 @@ function insertCell(panel: NotebookPanel, args: Record<string, unknown>) {
 }
 
 function editCell(panel: NotebookPanel, args: Record<string, unknown>) {
-  const index = requireIndex(args);
+  const index = resolveIndex(panel, args);
   const source = requireSource(args);
   const cell = cellAt(panel, index);
   (cell.model.sharedModel as any).setSource(source);
@@ -178,7 +179,10 @@ function deleteCell(panel: NotebookPanel, index: number) {
 }
 
 async function runCell(panel: NotebookPanel, index: number) {
-  cellAt(panel, index);
+  const cell = cellAt(panel, index);
+  panel.content.deselectAll();
+  panel.content.activeCellIndex = index;
+  panel.content.select(cell);
   await NotebookActions.run(panel.content, panel.context.sessionContext);
   return snapshotCell(panel, index);
 }
@@ -202,6 +206,21 @@ function requireIndex(args: Record<string, unknown>) {
     throw bridgeError('INVALID_ARGUMENT', 'A numeric cell index is required.', false);
   }
   return args.index as number;
+}
+
+function resolveIndex(panel: NotebookPanel, args: Record<string, unknown>) {
+  if (typeof args.cellId === 'string' && args.cellId.trim()) {
+    const index = panel.content.widgets.findIndex(cell => getCellId(cell) === args.cellId);
+    if (index < 0) {
+      throw bridgeError('STALE_CELL_ID', `Cell id ${args.cellId} is no longer present.`, false);
+    }
+    return index;
+  }
+  return requireIndex(args);
+}
+
+function getCellId(cell: any) {
+  return String(cell.model.id ?? cell.model.sharedModel?.getId?.() ?? '');
 }
 
 function requireInsertIndex(panel: NotebookPanel, args: Record<string, unknown>) {

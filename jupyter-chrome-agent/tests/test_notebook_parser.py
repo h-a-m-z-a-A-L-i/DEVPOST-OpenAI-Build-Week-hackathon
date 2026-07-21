@@ -35,7 +35,20 @@ class NotebookParserTests(unittest.TestCase):
 
             self.assertEqual(notebook["cellCount"], 1)
             self.assertEqual(notebook["cells"][0]["source"], "print('ok')\n")
+            self.assertFalse(notebook["cells"][0]["stableId"])
             self.assertEqual(notebook["cells"][0]["outputs"][0]["text"], "ok\n")
+
+    def test_preserves_notebook_cell_id(self):
+        with tempfile.TemporaryDirectory() as directory:
+            notebook = parse_notebook(self.write_notebook(Path(directory), "ids.ipynb", [{
+                "id": "cell-a1b2",
+                "cell_type": "code",
+                "source": "value = 1",
+                "outputs": [],
+            }]))
+
+            self.assertEqual(notebook["cells"][0]["id"], "cell-a1b2")
+            self.assertTrue(notebook["cells"][0]["stableId"])
 
     def test_limits_large_context(self):
         with tempfile.TemporaryDirectory() as directory:
