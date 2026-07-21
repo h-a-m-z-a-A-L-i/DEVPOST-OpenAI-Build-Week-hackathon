@@ -6,7 +6,7 @@ from pathlib import Path
 RUNTIME_PATH = Path(__file__).parents[1] / "runtime"
 sys.path.insert(0, str(RUNTIME_PATH))
 
-from gemini_agent import NotebookAgent, compress_context, normalize_codex_response  # noqa: E402
+from gemini_agent import NotebookAgent, build_prompt, compress_context, normalize_codex_response  # noqa: E402
 from tool_contracts import NOTEBOOK_TOOLS  # noqa: E402
 
 
@@ -34,6 +34,15 @@ class FailingToolClient:
         return {
             "candidates": [{"content": {"role": "model", "parts": [{
                 "functionCall": {"name": "run_cell", "args": {"index": 0}}
+            }]}}]
+        }
+
+
+class RepeatingToolClient:
+    def generate(self, contents, tools):
+        return {
+            "candidates": [{"content": {"role": "model", "parts": [{
+                "functionCall": {"name": "list_cells", "args": {}},
             }]}}]
         }
 
@@ -76,6 +85,20 @@ class GeminiAgentTests(unittest.TestCase):
                     "ok": False,
                     "error": {"code": "KERNEL_BUSY", "message": "busy"},
                 })
+
+    def test_prompt_prefers_supplied_context_for_read_questions(self):
+        prompt = build_prompt("Can you read the current code?", {"cells": []})
+
+        self.assertIn("context is authoritative", prompt)
+        self.assertIn("do not call read tools", prompt)
+
+    def test_agent_stops_after_repeating_same_tool_call(self):
+        agent = NotebookAgent(RepeatingToolClient())
+        pending = agent.start("Summarize the notebook.", {"cells": []}, NOTEBOOK_TOOLS)
+
+        with self.assertRaisesRegex(RuntimeError, "repeating the list_cells tool call"):
+            for _ in range(2):
+                pending = agent.continue_session(pending["sessionId"], {"ok": True, "cells": []})
 
 
 if __name__ == "__main__":

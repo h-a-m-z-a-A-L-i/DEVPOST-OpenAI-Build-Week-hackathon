@@ -1,5 +1,6 @@
 import json
 import os
+import json
 import threading
 import time
 import uuid
@@ -113,6 +114,8 @@ class NotebookAgent:
             "round": 0,
             "pending": None,
             "toolFailures": 0,
+            "lastToolSignature": None,
+            "repeatedToolCalls": 0,
             "createdAt": time.monotonic(),
         }
         self.sessions[session_id] = session
@@ -133,6 +136,8 @@ class NotebookAgent:
             raise GeminiError("Tool result must be an object.")
         if tool_result.get("ok") is False:
             session["toolFailures"] += 1
+            session["lastToolSignature"] = None
+            session["repeatedToolCalls"] = 0
             if session["toolFailures"] > self.max_tool_failures:
                 self.sessions.pop(session_id, None)
                 raise GeminiError("The agent stopped after repeated notebook tool failures.")
@@ -168,6 +173,21 @@ class NotebookAgent:
         if function_call:
             if not function_call.get("name") or not isinstance(function_call.get("args", {}), dict):
                 raise GeminiError("The model returned an invalid tool call.")
+            signature = json.dumps(
+                {"name": function_call["name"], "args": function_call.get("args", {})},
+                sort_keys=True,
+                ensure_ascii=False,
+            )
+            if signature == session.get("lastToolSignature"):
+                session["repeatedToolCalls"] += 1
+            else:
+                session["lastToolSignature"] = signature
+                session["repeatedToolCalls"] = 1
+            if session["repeatedToolCalls"] >= 3:
+                self.sessions.pop(session_id, None)
+                raise GeminiError(
+                    f"The agent stopped after repeating the {function_call['name']} tool call."
+                )
             session["pending"] = function_call
             return {
                 "status": "tool_call",
@@ -196,6 +216,9 @@ def build_prompt(prompt: str, context: dict[str, Any], history: list[dict[str, A
     return (
         "You are NotebookPilot, an autonomous local JupyterLab notebook assistant. "
         "Use tools when notebook changes or execution are required. Stay focused on the active notebook. "
+        "The supplied notebook context is authoritative for read-only questions; do not call read tools "
+        "just to reread cells already present in context. Use a tool only when the user requests a mutation, "
+        "execution, fresh output, or information missing from the context. "
         "Never invent tool results. If a tool fails, inspect the error and recover or explain the blocker.\n\n"
         f"Recent conversation:\n{memory_text}\n\n"
         f"Notebook context:\n{json.dumps(context, ensure_ascii=False)}\n\n"
