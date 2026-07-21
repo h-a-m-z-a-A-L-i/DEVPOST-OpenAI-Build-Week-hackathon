@@ -18,8 +18,8 @@ class GeminiClient:
         self.api_key = os.environ.get("GEMINI_API_KEY", "")
         self.model = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
         self.max_output_tokens = min(int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "65536")), 65536)
-        self.min_interval = 2.5
-        self.daily_request_limit = int(os.environ.get("GEMINI_RPD", "1500"))
+        self.min_interval = 60 / 28
+        self.daily_request_limit = int(os.environ.get("GEMINI_RPD", "1400"))
         self._last_request = 0.0
         self._request_day = ""
         self._daily_requests = 0
@@ -109,7 +109,7 @@ class GeminiClient:
             self._request_day = request_day
             self._daily_requests = 0
         if self._daily_requests >= self.daily_request_limit:
-            raise GeminiError("The daily Gemini request limit of 1,500 has been reached.")
+            raise GeminiError("The daily Gemini request limit of 1,400 has been reached.")
         wait = self.min_interval - (time.monotonic() - self._last_request)
         if wait > 0:
             time.sleep(wait)
