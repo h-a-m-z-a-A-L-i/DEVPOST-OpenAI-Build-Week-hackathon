@@ -1,11 +1,10 @@
 import json
 import os
-import json
 import threading
 import time
 import uuid
 from copy import deepcopy
-from typing import Any
+from typing import Any, Callable
 
 import requests
 
@@ -47,6 +46,67 @@ class GeminiClient:
         if not response.ok:
             raise GeminiError(format_provider_error("Gemini", response))
         return response.json()
+
+    def generate_stream(
+        self,
+        contents: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        on_text: Callable[[str], None],
+    ) -> dict[str, Any]:
+        if not self.api_key:
+            raise GeminiError("GEMINI_API_KEY is not configured.")
+
+        with self._lock:
+            wait = self.min_interval - (time.monotonic() - self._last_request)
+            if wait > 0:
+                time.sleep(wait)
+            request_started = time.monotonic()
+            self._last_request = request_started
+            response = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:streamGenerateContent",
+                params={"key": self.api_key, "alt": "sse"},
+                json={
+                    "contents": contents,
+                    "tools": [{"function_declarations": tools}],
+                    "generationConfig": {"maxOutputTokens": self.max_output_tokens},
+                },
+                stream=True,
+                timeout=90,
+            )
+
+        if not response.ok:
+            raise GeminiError(format_provider_error("Gemini", response))
+        response.encoding = "utf-8"
+
+        text_parts: list[str] = []
+        function_call = None
+        try:
+            for line in response.iter_lines(decode_unicode=True):
+                if not line or not line.startswith("data:"):
+                    continue
+                raw_payload = line[5:].strip()
+                if raw_payload == "[DONE]":
+                    continue
+                try:
+                    payload = json.loads(raw_payload)
+                except json.JSONDecodeError as error:
+                    raise GeminiError(f"Gemini returned invalid stream data: {error}") from error
+                parts = payload.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                for part in parts:
+                    if part.get("text"):
+                        text_parts.append(part["text"])
+                        on_text(part["text"])
+                    if part.get("functionCall"):
+                        function_call = part["functionCall"]
+        finally:
+            response.close()
+
+        parts = []
+        if text_parts:
+            parts.append({"text": "".join(text_parts)})
+        if function_call:
+            parts.append({"functionCall": function_call})
+        return {"candidates": [{"content": {"role": "model", "parts": parts}}]}
 
 
 class CodexClient:
@@ -102,6 +162,7 @@ class NotebookAgent:
         context: dict[str, Any],
         tools: list[dict[str, Any]],
         history: list[dict[str, Any]] | None = None,
+        on_text: Callable[[str], None] | None = None,
     ) -> dict[str, Any]:
         if not isinstance(prompt, str) or not prompt.strip():
             raise GeminiError("A non-empty prompt is required.")
@@ -122,12 +183,17 @@ class NotebookAgent:
         }
         self.sessions[session_id] = session
         try:
-            return self._advance(session_id)
+            return self._advance(session_id, on_text)
         except Exception:
             self.sessions.pop(session_id, None)
             raise
 
-    def continue_session(self, session_id: str, tool_result: dict[str, Any]) -> dict[str, Any]:
+    def continue_session(
+        self,
+        session_id: str,
+        tool_result: dict[str, Any],
+        on_text: Callable[[str], None] | None = None,
+    ) -> dict[str, Any]:
         session = self.sessions.get(session_id)
         if not session:
             raise GeminiError("Agent session was not found or expired.")
@@ -150,12 +216,12 @@ class NotebookAgent:
         })
         session["pending"] = None
         try:
-            return self._advance(session_id)
+            return self._advance(session_id, on_text)
         except Exception:
             self.sessions.pop(session_id, None)
             raise
 
-    def _advance(self, session_id: str) -> dict[str, Any]:
+    def _advance(self, session_id: str, on_text: Callable[[str], None] | None = None) -> dict[str, Any]:
         session = self.sessions[session_id]
         if time.monotonic() - session["createdAt"] > self.session_ttl:
             self.sessions.pop(session_id, None)
@@ -164,7 +230,10 @@ class NotebookAgent:
         if session["round"] > self.max_rounds:
             raise GeminiError("Agent round limit reached.")
 
-        response = self.client.generate(session["contents"], session["tools"])
+        if on_text is not None and hasattr(self.client, "generate_stream"):
+            response = self.client.generate_stream(session["contents"], session["tools"], on_text)
+        else:
+            response = self.client.generate(session["contents"], session["tools"])
         candidate = response.get("candidates", [{}])[0]
         content = candidate.get("content", {"role": "model", "parts": []})
         if not isinstance(content, dict) or not isinstance(content.get("parts", []), list):
@@ -199,6 +268,8 @@ class NotebookAgent:
             }
 
         text = "\n".join(part.get("text", "") for part in parts if part.get("text"))
+        if on_text is not None and not hasattr(self.client, "generate_stream") and text:
+            on_text(text)
         self.sessions.pop(session_id, None)
         return {"status": "complete", "sessionId": session_id, "round": session["round"], "text": text}
 

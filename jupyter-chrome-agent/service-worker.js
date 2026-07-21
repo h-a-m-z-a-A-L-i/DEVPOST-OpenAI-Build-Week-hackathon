@@ -241,7 +241,11 @@ async function runAgent(prompt, conversationId) {
   target.conversationId = sanitizeConversationId(conversationId) || undefined;
   const context = await getNotebookContext();
   const history = await getConversationHistory(target);
-  let response = await postRuntime('/api/chat/start', { prompt, context, history });
+  let response = await postRuntimeStream(
+    '/api/chat/start-stream',
+    { prompt, context, history },
+    text => notifyAgentStatus({ status: 'text_delta', text }),
+  );
   let rounds = 0;
 
   while (response.status === 'tool_call') {
@@ -251,10 +255,11 @@ async function runAgent(prompt, conversationId) {
     }
     notifyAgentStatus({ status: 'tool_call', tool: response.toolCall.name });
     const toolResult = await executeFrontendTool(target, response.toolCall);
-    response = await postRuntime('/api/chat/continue', {
-      sessionId: response.sessionId,
-      toolResult,
-    });
+    response = await postRuntimeStream(
+      '/api/chat/continue-stream',
+      { sessionId: response.sessionId, toolResult },
+      text => notifyAgentStatus({ status: 'text_delta', text }),
+    );
   }
 
   return response;
@@ -282,6 +287,41 @@ async function postRuntime(path, body) {
     throw new Error(payload.error || `Agent runtime failed with status ${response.status}.`);
   }
   return payload;
+}
+
+async function postRuntimeStream(path, body, onText) {
+  const response = await fetchWithTimeout(`http://127.0.0.1:8766${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }, AGENT_REQUEST_TIMEOUT_MS);
+  if (!response.ok || !response.body) {
+    let payload = {};
+    try { payload = await response.json(); } catch {}
+    throw new Error(payload.error || `Agent runtime failed with status ${response.status}.`);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let result;
+  while (true) {
+    const chunk = await reader.read();
+    buffer += decoder.decode(chunk.value || new Uint8Array(), { stream: !chunk.done });
+    const events = buffer.split('\n\n');
+    buffer = events.pop() || '';
+    for (const event of events) {
+      const line = event.split('\n').find(item => item.startsWith('data:'));
+      if (!line) continue;
+      const payload = JSON.parse(line.slice(5).trim());
+      if (payload.type === 'text_delta') onText(payload.text || '');
+      if (payload.type === 'error') throw new Error(payload.error || 'Agent streaming failed.');
+      if (payload.type === 'result') result = payload.result;
+    }
+    if (chunk.done) break;
+  }
+  if (!result) throw new Error('Agent stream ended without a result.');
+  return result;
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {

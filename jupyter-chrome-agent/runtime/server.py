@@ -41,6 +41,22 @@ class RuntimeHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             body = self.read_body()
+            if self.path == "/api/chat/start-stream":
+                self.stream_agent(lambda emit: agent.start(
+                    body["prompt"],
+                    body["context"],
+                    NOTEBOOK_TOOLS,
+                    body.get("history", []),
+                    on_text=lambda text: emit({"type": "text_delta", "text": text}),
+                ))
+                return
+            if self.path == "/api/chat/continue-stream":
+                self.stream_agent(lambda emit: agent.continue_session(
+                    body["sessionId"],
+                    body["toolResult"],
+                    on_text=lambda text: emit({"type": "text_delta", "text": text}),
+                ))
+                return
             if self.path == "/api/chat/start":
                 self.respond(agent.start(
                     body["prompt"],
@@ -59,6 +75,26 @@ class RuntimeHandler(BaseHTTPRequestHandler):
             self.respond({"ok": False, "error": str(error)}, 502)
         except Exception as error:
             self.respond({"ok": False, "error": str(error)}, 500)
+
+    def stream_agent(self, operation):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        self.end_headers()
+
+        def emit(payload):
+            body = f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode("utf-8")
+            self.wfile.write(body)
+            self.wfile.flush()
+
+        try:
+            result = operation(emit)
+            emit({"type": "result", "result": result})
+        except GeminiError as error:
+            emit({"type": "error", "error": str(error)})
+        except Exception as error:
+            emit({"type": "error", "error": str(error)})
 
     def read_body(self):
         length = int(self.headers.get("Content-Length", "0"))

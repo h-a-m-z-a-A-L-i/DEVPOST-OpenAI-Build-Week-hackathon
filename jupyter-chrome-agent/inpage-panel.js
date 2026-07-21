@@ -12,6 +12,7 @@
   let conversationTarget;
   let conversationTargetKey;
   let activeActivityMessage;
+  let activeResponseMessage;
   let activeComposer;
 
   const observer = new MutationObserver(() => updateActiveNotebook());
@@ -63,6 +64,7 @@
       shadowRoot = undefined;
       targetPath = undefined;
       activeActivityMessage = undefined;
+      activeResponseMessage = undefined;
       activeComposer = undefined;
       conversation = [];
       conversationId = undefined;
@@ -231,6 +233,7 @@
       if (!text) return;
       addMessage(text, 'user');
       activeActivityMessage = addMessage('Working on the notebook...', 'activity');
+      activeResponseMessage = undefined;
       activeComposer.disabled = true;
       textarea.value = '';
       void runAgent(text);
@@ -312,6 +315,19 @@
     const element = shadowRoot?.querySelector('.agent-status');
     if (!element) return;
     element.dataset.state = status.status;
+    if (status.status === 'text_delta') {
+      if (!activeResponseMessage) {
+        activeActivityMessage?.remove();
+        activeActivityMessage = undefined;
+        activeResponseMessage = document.createElement('div');
+        activeResponseMessage.className = 'message assistant';
+        shadowRoot.querySelector('.messages').append(activeResponseMessage);
+      }
+      activeResponseMessage.textContent += status.text || '';
+      const messages = shadowRoot.querySelector('.messages');
+      messages.scrollTop = messages.scrollHeight;
+      return;
+    }
     if (status.status === 'tool_call') {
       element.textContent = `Using ${status.tool}`;
     } else if (status.status === 'thinking') {
@@ -395,6 +411,12 @@
     }
     activeActivityMessage?.remove();
     activeActivityMessage = undefined;
+    if (activeResponseMessage) {
+      conversation.push({ role: 'assistant', text: activeResponseMessage.textContent, createdAt: new Date().toISOString() });
+      void saveConversation();
+      activeResponseMessage = undefined;
+      return;
+    }
     const text = response.result?.text || 'The agent completed without a final response.';
     addPanelMessage(text, 'assistant');
   }
