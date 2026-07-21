@@ -16,6 +16,16 @@ python jupyter-chrome-agent/scripts/release_audit.py
 python -m unittest discover -s jupyter-chrome-agent/tests -v
 ```
 
+After starting JupyterLab, probe the local services with:
+
+```powershell
+python jupyter-chrome-agent/scripts/live_smoke_test.py --notebook Untitled.ipynb
+python jupyter-chrome-agent/scripts/live_smoke_test.py --notebook Untitled.ipynb --agent
+```
+
+The `--agent` check consumes one model request and should only be used when
+outbound model access is available.
+
 The remaining release gate is manual browser validation: start JupyterLab,
 reload the unpacked extension, exercise the tools in a real notebook, and
 capture the demo evidence. The prepared demo notebook intentionally contains a
