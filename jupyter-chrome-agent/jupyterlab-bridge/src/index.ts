@@ -119,6 +119,8 @@ async function executeTool(
       return snapshotCell(panel, resolveIndex(panel, args));
     case 'read_cell_output':
       return snapshotCell(panel, resolveIndex(panel, args), true).outputs;
+    case 'find_cells':
+      return findCells(panel, args);
     case 'insert_cell':
       return insertCell(panel, args);
     case 'edit_cell':
@@ -127,6 +129,12 @@ async function executeTool(
       return deleteCell(panel, resolveIndex(panel, args));
     case 'run_cell':
       return runCell(panel, resolveIndex(panel, args));
+    case 'clear_cell_output':
+      return clearCellOutput(panel, resolveIndex(panel, args));
+    case 'inspect_error':
+      return inspectError(panel, resolveIndex(panel, args));
+    case 'get_kernel_status':
+      return getKernelStatus(panel);
     default:
       throw bridgeError('INVALID_TOOL', `Unknown tool: ${tool}.`, false);
   }
@@ -155,12 +163,24 @@ function snapshotCell(panel: NotebookPanel, index: number, outputsOnly = false, 
   };
 }
 
+function findCells(panel: NotebookPanel, args: Record<string, unknown>) {
+  const query = String(args.query).toLocaleLowerCase();
+  const type = args.type as string | undefined;
+  return panel.content.widgets
+    .map((_, index) => snapshotCell(panel, index, false, true))
+    .filter(cell => (!type || cell.type === type) && String(cell.source ?? '').toLocaleLowerCase().includes(query));
+}
+
 function insertCell(panel: NotebookPanel, args: Record<string, unknown>) {
   const index = requireInsertIndex(panel, args);
   const source = requireSource(args);
   const type = args.type === 'markdown' ? 'markdown' : 'code';
+  const previousCount = panel.content.widgets.length;
   const sharedModel = requireNotebookModel(panel).sharedModel as any;
   sharedModel.insertCell(index, { cell_type: type, source, metadata: {} });
+  if (panel.content.widgets.length !== previousCount + 1) {
+    throw bridgeError('STATE_CHANGED', 'The notebook cell count did not update after insertion.', true);
+  }
   return snapshotCell(panel, index);
 }
 
@@ -168,23 +188,73 @@ function editCell(panel: NotebookPanel, args: Record<string, unknown>) {
   const index = resolveIndex(panel, args);
   const source = requireSource(args);
   const cell = cellAt(panel, index);
+  const cellId = getCellId(cell);
   (cell.model.sharedModel as any).setSource(source);
-  return snapshotCell(panel, index);
+  const updatedIndex = resolveIndex(panel, { cellId });
+  const updated = snapshotCell(panel, updatedIndex);
+  if (updated.source !== source) {
+    throw bridgeError('STATE_CHANGED', 'The cell did not contain the requested source after editing.', true);
+  }
+  return updated;
 }
 
 function deleteCell(panel: NotebookPanel, index: number) {
-  cellAt(panel, index);
+  const cellId = getCellId(cellAt(panel, index));
+  const previousCount = panel.content.widgets.length;
   (requireNotebookModel(panel).sharedModel as any).deleteCell(index);
+  if (panel.content.widgets.length !== previousCount - 1) {
+    throw bridgeError('STATE_CHANGED', 'The notebook cell count did not update after deletion.', true);
+  }
+  if (panel.content.widgets.some(cell => getCellId(cell) === cellId)) {
+    throw bridgeError('STATE_CHANGED', 'The deleted cell is still present in the notebook.', true);
+  }
   return snapshotNotebook(panel, false);
 }
 
 async function runCell(panel: NotebookPanel, index: number) {
   const cell = cellAt(panel, index);
+  const cellId = getCellId(cell);
+  const sessionContext = panel.context.sessionContext as any;
+  if (sessionContext.status === 'busy') {
+    throw bridgeError('KERNEL_BUSY', 'The notebook kernel is already busy.', true);
+  }
   panel.content.deselectAll();
   panel.content.activeCellIndex = index;
   panel.content.select(cell);
-  await NotebookActions.run(panel.content, panel.context.sessionContext);
-  return snapshotCell(panel, index);
+  const ran = await NotebookActions.run(panel.content, panel.context.sessionContext);
+  if (!ran) {
+    throw bridgeError('EXECUTION_NOT_STARTED', 'JupyterLab did not start cell execution.', true);
+  }
+  return snapshotCell(panel, resolveIndex(panel, { cellId }));
+}
+
+function clearCellOutput(panel: NotebookPanel, index: number) {
+  const cell = cellAt(panel, index);
+  const cellId = getCellId(cell);
+  (cell.model.sharedModel as any).setOutputs([]);
+  const result = snapshotCell(panel, resolveIndex(panel, { cellId }), true);
+  if (result.outputs.length !== 0) {
+    throw bridgeError('STATE_CHANGED', 'Cell outputs were not cleared.', true);
+  }
+  return result;
+}
+
+function inspectError(panel: NotebookPanel, index: number) {
+  const cell = snapshotCell(panel, index, true);
+  return {
+    index: cell.index,
+    id: cell.id,
+    errors: cell.outputs.filter((output: any) => output.output_type === 'error' || output.type === 'error')
+  };
+}
+
+function getKernelStatus(panel: NotebookPanel) {
+  const sessionContext = panel.context.sessionContext as any;
+  return {
+    status: sessionContext.status ?? 'unknown',
+    isReady: sessionContext.isReady === true,
+    kernelName: sessionContext.kernelDisplayName ?? sessionContext.session?.kernel?.name ?? null
+  };
 }
 
 function cellAt(panel: NotebookPanel, index: number) {

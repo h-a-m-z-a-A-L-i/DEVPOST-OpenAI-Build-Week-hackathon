@@ -9,9 +9,13 @@ get_active_notebook
 list_cells
 read_cell
 read_cell_output
+find_cells
+inspect_error
+get_kernel_status
 insert_cell
 edit_cell
 delete_cell
+clear_cell_output
 run_cell
 ```
 

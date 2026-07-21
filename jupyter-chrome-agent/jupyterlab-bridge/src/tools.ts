@@ -3,6 +3,10 @@ export type NotebookToolName =
   | 'list_cells'
   | 'read_cell'
   | 'read_cell_output'
+  | 'find_cells'
+  | 'clear_cell_output'
+  | 'inspect_error'
+  | 'get_kernel_status'
   | 'insert_cell'
   | 'edit_cell'
   | 'delete_cell'
@@ -18,6 +22,10 @@ export const NOTEBOOK_TOOL_DEFINITIONS = [
   definition('read_cell_output', 'Read one active notebook cell output.', {
     index: { type: 'integer', minimum: 0 },
     cellId: { type: 'string', minLength: 1 }
+  }),
+  definition('find_cells', 'Find active notebook cells by source text.', {
+    query: { type: 'string', minLength: 1 },
+    type: { type: 'string', enum: ['code', 'markdown'] }
   }),
   definition('insert_cell', 'Insert a new cell into the active notebook.', {
     index: { type: 'integer', minimum: 0 },
@@ -36,7 +44,16 @@ export const NOTEBOOK_TOOL_DEFINITIONS = [
   definition('run_cell', 'Execute one active notebook cell and return its result.', {
     index: { type: 'integer', minimum: 0 },
     cellId: { type: 'string', minLength: 1 }
-  })
+  }),
+  definition('clear_cell_output', 'Clear one active notebook cell output.', {
+    index: { type: 'integer', minimum: 0 },
+    cellId: { type: 'string', minLength: 1 }
+  }),
+  definition('inspect_error', 'Inspect errors from one active notebook cell.', {
+    index: { type: 'integer', minimum: 0 },
+    cellId: { type: 'string', minLength: 1 }
+  }),
+  definition('get_kernel_status', 'Read the active notebook kernel status.', {})
 ] as const;
 
 export function assertToolArguments(
@@ -48,7 +65,17 @@ export function assertToolArguments(
     throw toolError('INVALID_TOOL', `Unknown tool: ${tool}.`);
   }
 
-  if (tool === 'get_active_notebook' || tool === 'list_cells') {
+  if (tool === 'get_active_notebook' || tool === 'list_cells' || tool === 'get_kernel_status') {
+    return;
+  }
+
+  if (tool === 'find_cells') {
+    if (typeof args.query !== 'string' || !args.query.trim()) {
+      throw toolError('INVALID_ARGUMENT', 'A non-empty query is required.');
+    }
+    if (args.type !== undefined && args.type !== 'code' && args.type !== 'markdown') {
+      throw toolError('INVALID_ARGUMENT', 'Cell type must be code or markdown.');
+    }
     return;
   }
 
