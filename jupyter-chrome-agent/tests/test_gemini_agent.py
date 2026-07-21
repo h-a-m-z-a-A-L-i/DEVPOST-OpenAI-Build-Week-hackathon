@@ -172,6 +172,14 @@ class GeminiAgentTests(unittest.TestCase):
         self.assertIn("exact cell index", prompt)
         self.assertIn("Do not ask whether to fix an error", prompt)
 
+    def test_prompt_includes_cell_read_schema_and_no_reasoning(self):
+        prompt = build_prompt("Can you read cell 0?", {"cells": []})
+
+        self.assertIn("For a one-cell read", prompt)
+        self.assertIn("preserving line breaks", prompt)
+        self.assertIn("Never reveal private chain-of-thought", prompt)
+        self.assertIn("Few-shot formatting examples", prompt)
+
     def test_agent_stops_after_repeating_same_tool_call(self):
         agent = NotebookAgent(RepeatingToolClient())
         pending = agent.start("Summarize the notebook.", {"cells": []}, NOTEBOOK_TOOLS)

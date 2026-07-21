@@ -141,7 +141,7 @@
       .title { font-size: 14px !important; font-weight: 800 !important; } .subtitle { color: #9badc4 !important; font-size: 10px !important; }
         .panel-action, .close { color: #a9bad1 !important; background: rgba(255,255,255,.06) !important; border: 1px solid rgba(255,255,255,.1) !important; }
       .body { gap: 12px !important; padding: 14px !important; min-height: 0 !important; } .target { flex-shrink: 0; padding: 11px 12px !important; border: 1px solid rgba(127,157,196,.14) !important; border-radius: 12px !important; background: rgba(10,18,30,.72) !important; }
-      .messages { gap: 9px !important; padding: 2px !important; min-height: 0 !important; overflow-y: auto !important; overscroll-behavior: contain; } .message { flex-shrink: 0; padding: 10px 11px !important; border: 1px solid rgba(127,157,196,.1); border-radius: 12px !important; line-height: 1.48 !important; } .message.user { align-self: flex-end; max-width: 88%; color: #082014 !important; background: #73e59e !important; border-color: transparent !important; } .message.error { color: #ffd0d0 !important; background: #4c252d !important; }
+      .messages { gap: 9px !important; padding: 2px !important; min-height: 0 !important; overflow-y: auto !important; overscroll-behavior: contain; } .message { flex-shrink: 0; padding: 10px 11px !important; border: 1px solid rgba(127,157,196,.1); border-radius: 12px !important; line-height: 1.48 !important; } .message.user { align-self: flex-end; max-width: 88%; color: #082014 !important; background: #73e59e !important; border-color: transparent !important; } .message.error { color: #ffd0d0 !important; background: #4c252d !important; } .message h2 { margin: 0 0 7px; color: #f2f7ff; font-size: 14px; } .message p { margin: 6px 0; } .message ul { margin: 6px 0 6px 18px; padding: 0; } .message pre { margin: 8px 0; padding: 9px; overflow-x: auto; color: #d9f5e3; background: #0a111b; border: 1px solid rgba(127,157,196,.18); border-radius: 8px; font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre; } .message code { padding: 1px 4px; color: #bde8ff; background: rgba(7,16,27,.65); border-radius: 4px; font: 11px ui-monospace, SFMono-Regular, Consolas, monospace; } .message pre code { padding: 0; background: transparent; color: inherit; }
       form { flex-shrink: 0; } textarea { padding: 10px 11px !important; background: rgba(10,18,30,.86) !important; border-radius: 10px !important; outline: none; } textarea:focus { border-color: #73e59e !important; box-shadow: 0 0 0 3px rgba(115,229,158,.12); }
       button.send { padding: 8px 12px !important; background: #73e59e !important; border-radius: 10px !important; font-weight: 800 !important; }
     `;
@@ -324,11 +324,81 @@
         conversation.forEach(item => {
           const message = document.createElement('div');
           message.className = `message ${item.role}`;
-          message.textContent = item.text;
+          renderMessageContent(message, item.text, item.role);
           list.append(message);
         });
       }
       list.scrollTop = list.scrollHeight;
+    }
+
+    function renderMessageContent(element, text, role) {
+      if (role !== 'assistant') {
+        element.textContent = text;
+        return;
+      }
+      element.replaceChildren();
+      const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
+      let code = false;
+      let codeLanguage = '';
+      let codeLines = [];
+      let list;
+      for (const line of lines) {
+        const fence = line.match(/^```\s*([\w+-]*)\s*$/);
+        if (fence) {
+          if (code) {
+            const pre = document.createElement('pre');
+            const codeElement = document.createElement('code');
+            codeElement.className = codeLanguage ? `language-${codeLanguage}` : '';
+            codeElement.textContent = codeLines.join('\n');
+            pre.append(codeElement);
+            element.append(pre);
+            code = false;
+            codeLines = [];
+            codeLanguage = '';
+          } else {
+            code = true;
+            codeLanguage = fence[1];
+          }
+          continue;
+        }
+        if (code) {
+          codeLines.push(line);
+          continue;
+        }
+        const bullet = line.match(/^\s*[-*]\s+(.+)$/);
+        if (bullet) {
+          if (!list) {
+            list = document.createElement('ul');
+            element.append(list);
+          }
+          const itemElement = document.createElement('li');
+          itemElement.innerHTML = renderInlineMarkdown(bullet[1]);
+          list.append(itemElement);
+          continue;
+        }
+        list = undefined;
+        if (!line.trim()) continue;
+        const heading = line.match(/^#{1,3}\s+(.+)$/);
+        const block = document.createElement(heading ? 'h2' : 'p');
+        block.innerHTML = renderInlineMarkdown(heading ? heading[1] : line);
+        element.append(block);
+      }
+      if (code) {
+        const pre = document.createElement('pre');
+        const codeElement = document.createElement('code');
+        codeElement.textContent = codeLines.join('\n');
+        pre.append(codeElement);
+        element.append(pre);
+      }
+    }
+
+    function renderInlineMarkdown(value) {
+      const escaped = String(value || '').replace(/[&<>"']/g, character => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[character]));
+      return escaped
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     }
 
     async function selectConversation(id) {
@@ -368,7 +438,9 @@
         activeResponseMessage.className = 'message assistant';
         shadowRoot.querySelector('.messages').append(activeResponseMessage);
       }
-      activeResponseMessage.textContent += status.text || '';
+      const rawText = (activeResponseMessage.dataset.rawText || '') + (status.text || '');
+      activeResponseMessage.dataset.rawText = rawText;
+      activeResponseMessage.textContent = rawText;
       const messages = shadowRoot.querySelector('.messages');
       messages.scrollTop = messages.scrollHeight;
       return;
@@ -407,7 +479,7 @@
       conversation.forEach(item => {
         const message = document.createElement('div');
         message.className = `message ${item.role}`;
-        message.textContent = item.text;
+        renderMessageContent(message, item.text, item.role);
         shadowRoot.querySelector('.messages').append(message);
       });
     } else {
@@ -468,7 +540,9 @@
     activeActivityMessage?.remove();
     activeActivityMessage = undefined;
     if (activeResponseMessage) {
-      conversation.push({ role: 'assistant', text: activeResponseMessage.textContent, createdAt: new Date().toISOString() });
+      const responseText = activeResponseMessage.dataset.rawText || activeResponseMessage.textContent;
+      renderMessageContent(activeResponseMessage, responseText, 'assistant');
+      conversation.push({ role: 'assistant', text: responseText, createdAt: new Date().toISOString() });
       void saveConversation();
       activeResponseMessage = undefined;
       return;
@@ -482,7 +556,7 @@
     const messages = shadowRoot.querySelector('.messages');
     const message = document.createElement('div');
     message.className = `message ${role}`;
-    message.textContent = text;
+    renderMessageContent(message, text, role);
     messages.append(message);
     messages.scrollTop = messages.scrollHeight;
     conversation.push({ role, text, createdAt: new Date().toISOString() });
