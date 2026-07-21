@@ -109,6 +109,20 @@
       <button class="toggle" title="Open Jupyter Notebook Agent">NP</button>
       <section class="panel"><header class="header"><div><div class="title">NotebookPilot</div><div class="subtitle">Local JupyterLab assistant</div></div><button class="close" title="Close">×</button></header><div class="body"><div class="target">Active notebook: <span class="target-path"></span><span class="agent-status">Ready</span></div><div class="messages"><div class="message">I’m connected to this notebook. Tools will appear here next.</div></div><form><textarea rows="2" placeholder="Ask about this notebook..."></textarea><button class="send" type="submit">Send</button></form></div></section>
     `;
+    const polish = document.createElement('style');
+    polish.textContent = `
+      .toggle { width: 54px !important; height: 54px !important; border: 3px solid rgba(255,255,255,.78) !important; border-radius: 18px !important; background: linear-gradient(135deg, #8bf0b0, #40c879) !important; box-shadow: 0 10px 28px rgba(65,205,126,.35) !important; transition: transform .18s ease, box-shadow .18s ease; }
+      .toggle:hover { transform: translateY(-3px) rotate(-2deg); box-shadow: 0 15px 34px rgba(65,205,126,.48) !important; }
+      .panel { width: min(380px, calc(100vw - 28px)) !important; height: min(540px, calc(100vh - 28px)) !important; border-radius: 20px !important; background: linear-gradient(160deg, #172235 0%, #0d1420 100%) !important; box-shadow: 0 18px 48px rgba(0,0,0,.42) !important; }
+      .header { padding: 16px 17px !important; background: rgba(35,51,74,.88) !important; border-bottom: 1px solid rgba(127,157,196,.18); }
+      .title { font-size: 14px !important; font-weight: 800 !important; } .subtitle { color: #9badc4 !important; font-size: 10px !important; }
+      .close { padding: 3px 8px !important; color: #a9bad1 !important; background: rgba(255,255,255,.06) !important; border: 1px solid rgba(255,255,255,.1) !important; border-radius: 8px !important; }
+      .body { gap: 12px !important; padding: 14px !important; } .target { padding: 11px 12px !important; border: 1px solid rgba(127,157,196,.14) !important; border-radius: 12px !important; background: rgba(10,18,30,.72) !important; }
+      .messages { gap: 9px !important; padding: 2px !important; } .message { padding: 10px 11px !important; border: 1px solid rgba(127,157,196,.1); border-radius: 12px !important; line-height: 1.48 !important; } .message.user { align-self: flex-end; max-width: 88%; color: #082014 !important; background: #73e59e !important; border-color: transparent !important; } .message.error { color: #ffd0d0 !important; background: #4c252d !important; }
+      textarea { padding: 10px 11px !important; background: rgba(10,18,30,.86) !important; border-radius: 10px !important; outline: none; } textarea:focus { border-color: #73e59e !important; box-shadow: 0 0 0 3px rgba(115,229,158,.12); }
+      button.send { padding: 8px 12px !important; background: #73e59e !important; border-radius: 10px !important; font-weight: 800 !important; }
+    `;
+    shadowRoot.append(polish);
 
     const toggle = shadowRoot.querySelector('.toggle');
     const panel = shadowRoot.querySelector('.panel');
@@ -119,6 +133,9 @@
     const textarea = shadowRoot.querySelector('textarea');
     const messages = shadowRoot.querySelector('.messages');
     activeComposer = textarea;
+    shadowRoot.querySelector('.close').textContent = 'x';
+    shadowRoot.querySelector('.subtitle').textContent = 'Your local JupyterLab copilot';
+    shadowRoot.querySelector('.messages .message').textContent = 'Connected to this notebook. Ask me to inspect, edit, or run a cell.';
 
     toggle.addEventListener('click', () => { panel.classList.add('open'); toggle.classList.add('hidden'); });
     close.addEventListener('click', () => { panel.classList.remove('open'); toggle.classList.remove('hidden'); });
@@ -162,6 +179,7 @@
   function renderAgentStatus(status) {
     const element = shadowRoot?.querySelector('.agent-status');
     if (!element) return;
+    element.dataset.state = status.status;
     if (status.status === 'tool_call') {
       element.textContent = `Using ${status.tool}`;
     } else if (status.status === 'thinking') {

@@ -44,8 +44,8 @@ def main() -> int:
         manifest = json.loads((PROJECT / "manifest.json").read_text(encoding="utf-8"))
         if manifest.get("manifest_version") != 3:
             failures.append("manifest is not Manifest V3")
-        if manifest.get("version") != "0.2.0":
-            failures.append("manifest version is not 0.2.0")
+        if manifest.get("version") != "0.3.0":
+            failures.append("manifest version is not 0.3.0")
     except (OSError, ValueError) as error:
         failures.append(f"manifest is invalid: {error}")
 
