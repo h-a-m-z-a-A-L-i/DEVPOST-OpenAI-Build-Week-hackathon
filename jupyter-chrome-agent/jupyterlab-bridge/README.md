@@ -37,4 +37,14 @@ npm run build
 npm run check-types
 ```
 
-The package declares itself as a JupyterLab frontend extension. Install the built package into the local JupyterLab environment using the standard JupyterLab extension installation workflow before it can receive browser messages.
+The package declares itself as a JupyterLab frontend extension. After building,
+install it once with:
+
+```powershell
+npm install
+npm run build
+python -m jupyter labextension install . --no-build
+```
+
+JupyterLab 4.6.1 reports the extension as enabled after installation. It then
+loads automatically whenever JupyterLab starts.
