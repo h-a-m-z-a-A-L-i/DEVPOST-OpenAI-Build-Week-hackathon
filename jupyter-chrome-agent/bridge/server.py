@@ -3,7 +3,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from notebook_parser import build_context as build_notebook_context, discover_server_root, find_notebooks, parse_notebook
+from notebook_parser import build_context as build_notebook_context, discover_server_root, find_notebooks, parse_notebook, resolve_notebook_path
 
 
 class BridgeError(RuntimeError):
@@ -29,10 +29,10 @@ class BridgeHandler(BaseHTTPRequestHandler):
                 self.respond({"ok": True, "service": "jupyter-notebook-bridge"})
                 return
             if parsed.path == "/api/notebook":
-                self.handle_notebook(query.get("name", [""])[0])
+                self.handle_notebook(query.get("name", [""])[0], query.get("path", [""])[0])
                 return
             if parsed.path == "/api/context":
-                self.handle_context(query.get("name", [""])[0])
+                self.handle_context(query.get("name", [""])[0], query.get("path", [""])[0])
                 return
             self.respond({"ok": False, "error": "Not found"}, 404)
         except BridgeError as error:
@@ -40,14 +40,14 @@ class BridgeHandler(BaseHTTPRequestHandler):
         except Exception as error:
             self.respond({"ok": False, "error": f"Bridge failure: {error}"}, 503)
 
-    def handle_notebook(self, notebook_name: str):
-        self.handle_resolved_notebook(notebook_name, use_context=False)
+    def handle_notebook(self, notebook_name: str, notebook_path: str):
+        self.handle_resolved_notebook(notebook_name, notebook_path, use_context=False)
 
-    def handle_context(self, notebook_name: str):
-        self.handle_resolved_notebook(notebook_name, use_context=True)
+    def handle_context(self, notebook_name: str, notebook_path: str):
+        self.handle_resolved_notebook(notebook_name, notebook_path, use_context=True)
 
-    def handle_resolved_notebook(self, notebook_name: str, use_context: bool):
-        if not notebook_name.lower().endswith(".ipynb"):
+    def handle_resolved_notebook(self, notebook_name: str, notebook_path: str, use_context: bool):
+        if notebook_name and not notebook_name.lower().endswith(".ipynb"):
             self.respond({"ok": False, "error": "A .ipynb notebook name is required."}, 400)
             return
 
@@ -55,7 +55,14 @@ class BridgeHandler(BaseHTTPRequestHandler):
             root = discover_server_root()
         except Exception as error:
             raise BridgeError(f"Unable to discover the Jupyter server root: {error}", 503) from error
-        matches = find_notebooks(root, Path(notebook_name).name)
+        try:
+            exact_match = resolve_notebook_path(root, notebook_path, notebook_name) if notebook_path else None
+        except ValueError as error:
+            raise BridgeError(str(error), 400) from error
+        if notebook_path:
+            matches = [exact_match] if exact_match else []
+        else:
+            matches = find_notebooks(root, Path(notebook_name).name)
         if not matches:
             raise BridgeError(f"Notebook not found under {root}.", 404)
         if len(matches) > 1:

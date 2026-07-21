@@ -8,7 +8,7 @@ from pathlib import Path
 BRIDGE_PATH = Path(__file__).parents[1] / "bridge"
 sys.path.insert(0, str(BRIDGE_PATH))
 
-from notebook_parser import build_context, find_notebooks, parse_notebook  # noqa: E402
+from notebook_parser import build_context, find_notebooks, parse_notebook, resolve_notebook_path  # noqa: E402
 
 
 class NotebookParserTests(unittest.TestCase):
@@ -68,6 +68,23 @@ class NotebookParserTests(unittest.TestCase):
             matches = find_notebooks(root, "same.ipynb")
 
             self.assertEqual(len(matches), 2)
+
+    def test_exact_jupyter_path_disambiguates_duplicate_names(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "one").mkdir()
+            (root / "two").mkdir()
+            first = self.write_notebook(root / "one", "same.ipynb", [])
+            self.write_notebook(root / "two", "same.ipynb", [])
+
+            resolved = resolve_notebook_path(root, "one/same.ipynb", "same.ipynb")
+
+            self.assertEqual(resolved, first.resolve())
+
+    def test_rejects_notebook_path_traversal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(ValueError):
+                resolve_notebook_path(Path(directory), "../same.ipynb", "same.ipynb")
 
 
 if __name__ == "__main__":

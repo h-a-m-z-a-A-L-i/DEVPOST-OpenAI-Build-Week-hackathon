@@ -174,11 +174,22 @@ async function getNotebookContext() {
   if (!notebookName) {
     throw new Error('No active notebook has been identified.');
   }
-  if (target.resolveStatus === 'ambiguous') {
+  let liveNotebookPath;
+  try {
+    const live = await executeFrontendTool(target, { name: 'get_active_notebook', args: {} });
+    if (live?.ok && live.result?.path) {
+      liveNotebookPath = live.result.path;
+    }
+  } catch {
+    // Fall back to filename resolution when the frontend bridge is unavailable.
+  }
+  if (!liveNotebookPath && target.resolveStatus === 'ambiguous') {
     throw new Error(`Notebook name is ambiguous. Matches: ${(target.candidates ?? []).join(', ')}`);
   }
 
-  const url = `http://127.0.0.1:8765/api/context?name=${encodeURIComponent(notebookName)}`;
+  const query = new URLSearchParams({ name: notebookName });
+  if (liveNotebookPath) query.set('path', liveNotebookPath);
+  const url = `http://127.0.0.1:8765/api/context?${query}`;
   const response = await fetchWithTimeout(url, {}, BRIDGE_REQUEST_TIMEOUT_MS);
   const payload = await response.json();
   if (!response.ok || !payload.ok) {

@@ -2,7 +2,7 @@ import json
 import os
 import subprocess
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 
@@ -76,6 +76,26 @@ def find_notebooks(root: Path, notebook_name: str) -> list[Path]:
             if filename.lower() == target and filename.lower().endswith(".ipynb") and Path(directory) / filename != direct_match:
                 matches.append(Path(directory) / filename)
     return sorted(matches)
+
+
+def resolve_notebook_path(root: Path, notebook_path: str, notebook_name: str = "") -> Path | None:
+    """Resolve a Jupyter relative path without allowing root traversal."""
+    normalized = notebook_path.replace("\\", "/").strip()
+    relative = PurePosixPath(normalized)
+    if not normalized or relative.is_absolute() or ":" in normalized or ".." in relative.parts:
+        raise ValueError("Notebook path must be relative to the Jupyter server root.")
+    if relative.suffix.lower() != ".ipynb":
+        raise ValueError("Notebook path must point to an .ipynb file.")
+    if notebook_name and relative.name.lower() != Path(notebook_name).name.lower():
+        raise ValueError("Notebook path does not match the active notebook name.")
+
+    root_resolved = root.resolve()
+    candidate = (root_resolved / Path(*relative.parts)).resolve()
+    try:
+        candidate.relative_to(root_resolved)
+    except ValueError as error:
+        raise ValueError("Notebook path escapes the Jupyter server root.") from error
+    return candidate if candidate.is_file() else None
 
 
 def parse_notebook(path: Path) -> dict[str, Any]:
