@@ -73,7 +73,7 @@ class GeminiClient:
         response.encoding = "utf-8"
 
         text_parts: list[str] = []
-        function_call = None
+        function_parts: list[dict[str, Any]] = []
         try:
             for line in response.iter_lines(decode_unicode=True):
                 if not line or not line.startswith("data:"):
@@ -91,15 +91,18 @@ class GeminiClient:
                         text_parts.append(part["text"])
                         on_text(part["text"])
                     if part.get("functionCall"):
-                        function_call = part["functionCall"]
+                        function_part = {"functionCall": part["functionCall"]}
+                        for signature_key in ("thoughtSignature", "thought_signature"):
+                            if part.get(signature_key):
+                                function_part[signature_key] = part[signature_key]
+                        function_parts.append(function_part)
         finally:
             response.close()
 
         parts = []
         if text_parts:
             parts.append({"text": "".join(text_parts)})
-        if function_call:
-            parts.append({"functionCall": function_call})
+        parts.extend(function_parts)
         return {"candidates": [{"content": {"role": "model", "parts": parts}}]}
 
     def _reserve_request(self):

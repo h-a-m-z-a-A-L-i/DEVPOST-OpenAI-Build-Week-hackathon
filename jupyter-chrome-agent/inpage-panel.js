@@ -350,13 +350,13 @@
     element.dataset.state = status.status;
     if (status.status === 'thinking') {
       progressPanel.classList.add('visible');
-      progressLabel.firstChild.textContent = 'Analyzing notebook';
+      progressLabel.firstChild.textContent = 'Thinking';
     } else if (status.status === 'tool_call') {
       progressPanel.classList.add('visible');
-      progressLabel.firstChild.textContent = `Using ${status.tool}`;
+      progressLabel.firstChild.textContent = 'Working';
     } else if (status.status === 'text_delta') {
       progressPanel.classList.add('visible');
-      progressLabel.firstChild.textContent = 'Writing response';
+      progressLabel.firstChild.textContent = 'Working';
     } else if (status.status === 'complete' || status.status === 'error') {
       progressPanel.classList.remove('visible');
     }
@@ -374,7 +374,7 @@
       return;
     }
     if (status.status === 'tool_call') {
-      element.textContent = `Using ${status.tool}`;
+      element.textContent = 'Working';
     } else if (status.status === 'thinking') {
       element.textContent = 'Thinking';
     } else if (status.status === 'complete') {
@@ -383,8 +383,8 @@
       element.textContent = status.message || 'Error';
     }
     if (activeActivityMessage) {
-      activeActivityMessage.textContent = status.status === 'tool_call'
-        ? `Using ${status.tool}...`
+      activeActivityMessage.textContent = status.status === 'tool_call' || status.status === 'text_delta'
+        ? 'Working...'
         : status.status === 'thinking'
           ? 'Thinking...'
           : status.status === 'error'

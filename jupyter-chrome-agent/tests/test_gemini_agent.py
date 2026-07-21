@@ -65,6 +65,17 @@ class BatchedToolClient:
         return {"candidates": [{"content": {"role": "model", "parts": [{"text": "done"}]}}]}
 
 
+class FakeStreamResponse:
+    ok = True
+    encoding = "utf-8"
+
+    def iter_lines(self, decode_unicode=True):
+        yield 'data: {"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"read_cell","args":{"index":0}},"thoughtSignature":"signed-call"}]}}]}'
+
+    def close(self):
+        return None
+
+
 class GeminiAgentTests(unittest.TestCase):
     def test_gemini_quota_defaults(self):
         client = GeminiClient()
@@ -182,6 +193,17 @@ class GeminiAgentTests(unittest.TestCase):
         })
 
         self.assertEqual(final["text"], "done")
+
+    def test_streaming_tool_calls_preserve_thought_signature(self):
+        client = GeminiClient()
+        with patch.object(client, "_reserve_request"), patch(
+            "gemini_agent.requests.post", return_value=FakeStreamResponse()
+        ):
+            response = client.generate_stream([], NOTEBOOK_TOOLS, lambda _text: None)
+
+        part = response["candidates"][0]["content"]["parts"][0]
+        self.assertEqual(part["functionCall"]["name"], "read_cell")
+        self.assertEqual(part["thoughtSignature"], "signed-call")
 
 
 if __name__ == "__main__":
