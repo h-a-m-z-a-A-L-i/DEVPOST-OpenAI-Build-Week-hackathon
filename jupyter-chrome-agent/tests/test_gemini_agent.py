@@ -92,6 +92,13 @@ class GeminiAgentTests(unittest.TestCase):
         self.assertIn("context is authoritative", prompt)
         self.assertIn("do not call read tools", prompt)
 
+    def test_prompt_requires_structured_cells_for_large_workflows(self):
+        prompt = build_prompt("Build a complete machine learning workflow.", {"cells": []})
+
+        self.assertIn("never place a large workflow or large code answer in one cell", prompt)
+        self.assertIn("one working stage per cell", prompt)
+        self.assertIn("run affected cells in order", prompt)
+
     def test_agent_stops_after_repeating_same_tool_call(self):
         agent = NotebookAgent(RepeatingToolClient())
         pending = agent.start("Summarize the notebook.", {"cells": []}, NOTEBOOK_TOOLS)
