@@ -6,7 +6,7 @@ from pathlib import Path
 RUNTIME_PATH = Path(__file__).parents[1] / "runtime"
 sys.path.insert(0, str(RUNTIME_PATH))
 
-from gemini_agent import NotebookAgent, normalize_codex_response  # noqa: E402
+from gemini_agent import NotebookAgent, compress_context, normalize_codex_response  # noqa: E402
 from tool_contracts import NOTEBOOK_TOOLS  # noqa: E402
 
 
@@ -25,6 +25,15 @@ class FakeGeminiClient:
         return {
             "candidates": [{"content": {"role": "model", "parts": [{
                 "text": "The notebook contains one cell."
+            }]}}]
+        }
+
+
+class FailingToolClient:
+    def generate(self, contents, tools):
+        return {
+            "candidates": [{"content": {"role": "model", "parts": [{
+                "functionCall": {"name": "run_cell", "args": {"index": 0}}
             }]}}]
         }
 
@@ -49,6 +58,24 @@ class GeminiAgentTests(unittest.TestCase):
 
         self.assertEqual(response["candidates"][0]["content"]["parts"][0]["functionCall"]["name"], "read_cell")
         self.assertEqual(response["candidates"][0]["content"]["parts"][0]["functionCall"]["args"]["cellId"], "cell-a1b2")
+
+    def test_context_compression_reports_omitted_cells(self):
+        context = {"cells": [{"index": index, "source": "x" * 8000, "outputs": []} for index in range(30)]}
+        compressed = compress_context(context)
+
+        self.assertTrue(compressed["contextSummary"]["truncated"])
+        self.assertLess(len(compressed["cells"]), 30)
+
+    def test_agent_stops_after_repeated_tool_failures(self):
+        agent = NotebookAgent(FailingToolClient())
+        pending = agent.start("Run the cell.", {"cells": []}, NOTEBOOK_TOOLS)
+
+        with self.assertRaisesRegex(RuntimeError, "repeated notebook tool failures"):
+            for _ in range(4):
+                pending = agent.continue_session(pending["sessionId"], {
+                    "ok": False,
+                    "error": {"code": "KERNEL_BUSY", "message": "busy"},
+                })
 
 
 if __name__ == "__main__":

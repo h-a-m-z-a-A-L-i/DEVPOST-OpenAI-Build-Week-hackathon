@@ -42,7 +42,12 @@ class RuntimeHandler(BaseHTTPRequestHandler):
         try:
             body = self.read_body()
             if self.path == "/api/chat/start":
-                self.respond(agent.start(body["prompt"], body["context"], NOTEBOOK_TOOLS))
+                self.respond(agent.start(
+                    body["prompt"],
+                    body["context"],
+                    NOTEBOOK_TOOLS,
+                    body.get("history", []),
+                ))
                 return
             if self.path == "/api/chat/continue":
                 self.respond(agent.continue_session(body["sessionId"], body["toolResult"]))

@@ -203,7 +203,8 @@ async function runAgent(prompt) {
 
   const target = await getTarget();
   const context = await getNotebookContext();
-  let response = await postRuntime('/api/chat/start', { prompt, context });
+  const history = await getConversationHistory(target);
+  let response = await postRuntime('/api/chat/start', { prompt, context, history });
   let rounds = 0;
 
   while (response.status === 'tool_call') {
@@ -220,6 +221,16 @@ async function runAgent(prompt) {
   }
 
   return response;
+}
+
+async function getConversationHistory(target) {
+  try {
+    const key = conversationKey(target);
+    const result = await chrome.storage.local.get(key);
+    return Array.isArray(result[key]) ? result[key].slice(-12) : [];
+  } catch {
+    return [];
+  }
 }
 
 function notifyAgentStatus(payload) {

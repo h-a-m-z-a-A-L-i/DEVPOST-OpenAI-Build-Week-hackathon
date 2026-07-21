@@ -24,6 +24,9 @@ The service worker continues the loop until Gemini returns text or the maximum a
 
 The floating panel receives status events for `thinking`, `tool_call`, `complete`, and `error` states.
 
+Saved conversation history is scoped to the active Chrome tab and notebook, then
+the most recent bounded messages are supplied to the runtime with each new task.
+
 ## Local services
 
 Start both services before testing:

@@ -3,6 +3,7 @@ import os
 import threading
 import time
 import uuid
+from copy import deepcopy
 from typing import Any
 
 import requests
@@ -89,13 +90,37 @@ class NotebookAgent:
         self.client = client or create_client()
         self.sessions: dict[str, dict[str, Any]] = {}
         self.max_rounds = int(os.environ.get("LLM_REACT_MAX_ROUNDS", "15"))
+        self.max_tool_failures = int(os.environ.get("LLM_MAX_TOOL_FAILURES", "3"))
+        self.session_ttl = float(os.environ.get("LLM_SESSION_TTL_SEC", "900"))
 
-    def start(self, prompt: str, context: dict[str, Any], tools: list[dict[str, Any]]) -> dict[str, Any]:
+    def start(
+        self,
+        prompt: str,
+        context: dict[str, Any],
+        tools: list[dict[str, Any]],
+        history: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise GeminiError("A non-empty prompt is required.")
+        if not isinstance(context, dict):
+            raise GeminiError("Notebook context must be an object.")
+        self.cleanup_sessions()
         session_id = uuid.uuid4().hex
-        contents = [{"role": "user", "parts": [{"text": build_prompt(prompt, context)}]}]
-        session = {"contents": contents, "tools": tools, "round": 0, "pending": None}
+        contents = [{"role": "user", "parts": [{"text": build_prompt(prompt, compress_context(context), history or [])}]}]
+        session = {
+            "contents": contents,
+            "tools": tools,
+            "round": 0,
+            "pending": None,
+            "toolFailures": 0,
+            "createdAt": time.monotonic(),
+        }
         self.sessions[session_id] = session
-        return self._advance(session_id)
+        try:
+            return self._advance(session_id)
+        except Exception:
+            self.sessions.pop(session_id, None)
+            raise
 
     def continue_session(self, session_id: str, tool_result: dict[str, Any]) -> dict[str, Any]:
         session = self.sessions.get(session_id)
@@ -104,16 +129,30 @@ class NotebookAgent:
         pending = session.get("pending")
         if not pending:
             raise GeminiError("Agent session has no pending tool call.")
+        if not isinstance(tool_result, dict):
+            raise GeminiError("Tool result must be an object.")
+        if tool_result.get("ok") is False:
+            session["toolFailures"] += 1
+            if session["toolFailures"] > self.max_tool_failures:
+                self.sessions.pop(session_id, None)
+                raise GeminiError("The agent stopped after repeated notebook tool failures.")
 
         session["contents"].append({
             "role": "user",
             "parts": [{"functionResponse": {"name": pending["name"], "response": {"result": tool_result}}}],
         })
         session["pending"] = None
-        return self._advance(session_id)
+        try:
+            return self._advance(session_id)
+        except Exception:
+            self.sessions.pop(session_id, None)
+            raise
 
     def _advance(self, session_id: str) -> dict[str, Any]:
         session = self.sessions[session_id]
+        if time.monotonic() - session["createdAt"] > self.session_ttl:
+            self.sessions.pop(session_id, None)
+            raise GeminiError("Agent session expired; please retry the request.")
         session["round"] += 1
         if session["round"] > self.max_rounds:
             raise GeminiError("Agent round limit reached.")
@@ -121,10 +160,14 @@ class NotebookAgent:
         response = self.client.generate(session["contents"], session["tools"])
         candidate = response.get("candidates", [{}])[0]
         content = candidate.get("content", {"role": "model", "parts": []})
+        if not isinstance(content, dict) or not isinstance(content.get("parts", []), list):
+            raise GeminiError("The model returned an invalid response format.")
         session["contents"].append(content)
         parts = content.get("parts", [])
         function_call = next((part.get("functionCall") for part in parts if part.get("functionCall")), None)
         if function_call:
+            if not function_call.get("name") or not isinstance(function_call.get("args", {}), dict):
+                raise GeminiError("The model returned an invalid tool call.")
             session["pending"] = function_call
             return {
                 "status": "tool_call",
@@ -137,14 +180,92 @@ class NotebookAgent:
         self.sessions.pop(session_id, None)
         return {"status": "complete", "sessionId": session_id, "round": session["round"], "text": text}
 
+    def cleanup_sessions(self) -> None:
+        now = time.monotonic()
+        expired = [
+            session_id for session_id, session in self.sessions.items()
+            if now - session.get("createdAt", now) > self.session_ttl
+        ]
+        for session_id in expired:
+            self.sessions.pop(session_id, None)
 
-def build_prompt(prompt: str, context: dict[str, Any]) -> str:
+
+def build_prompt(prompt: str, context: dict[str, Any], history: list[dict[str, Any]] | None = None) -> str:
+    memory = compact_history(history or [])
+    memory_text = json.dumps(memory, ensure_ascii=False) if memory else "No prior conversation."
     return (
         "You are NotebookPilot, an autonomous local JupyterLab notebook assistant. "
-        "Use tools when notebook changes or execution are required. Stay focused on the active notebook.\n\n"
+        "Use tools when notebook changes or execution are required. Stay focused on the active notebook. "
+        "Never invent tool results. If a tool fails, inspect the error and recover or explain the blocker.\n\n"
+        f"Recent conversation:\n{memory_text}\n\n"
         f"Notebook context:\n{json.dumps(context, ensure_ascii=False)}\n\n"
         f"User request:\n{prompt}"
     )
+
+
+def compress_context(context: dict[str, Any]) -> dict[str, Any]:
+    limit = int(os.environ.get("LLM_CONTEXT_MAX_CHARS", "120000"))
+    compact = deepcopy(context)
+    cells = compact.get("cells", [])
+    if not isinstance(cells, list):
+        compact["cells"] = []
+        return compact
+
+    compact_cells = []
+    for cell in cells:
+        if not isinstance(cell, dict):
+            continue
+        item = {
+            "index": cell.get("index"),
+            "id": cell.get("id"),
+            "type": cell.get("type"),
+            "source": str(cell.get("source", ""))[:8000],
+            "executionCount": cell.get("executionCount"),
+            "outputs": compact_outputs(cell.get("outputs", [])),
+        }
+        trial = {**compact, "cells": compact_cells + [item]}
+        if compact_cells and len(json.dumps(trial, ensure_ascii=False)) > limit:
+            break
+        compact_cells.append(item)
+    compact["cells"] = compact_cells
+    compact["contextSummary"] = {
+        "originalCellCount": len(cells),
+        "includedCellCount": len(compact_cells),
+        "truncated": len(compact_cells) < len(cells),
+        "errorCellIndexes": [
+            cell.get("index") for cell in compact_cells
+            if any(output.get("type") == "error" or output.get("output_type") == "error"
+                   for output in cell.get("outputs", []) if isinstance(output, dict))
+        ],
+    }
+    return compact
+
+
+def compact_outputs(outputs: Any) -> list[dict[str, Any]]:
+    if not isinstance(outputs, list):
+        return []
+    compacted = []
+    for output in outputs[:8]:
+        if not isinstance(output, dict):
+            continue
+        item = {key: value for key, value in output.items() if key in {"type", "output_type", "name", "ename", "evalue"}}
+        if "text" in output:
+            item["text"] = str(output["text"])[:3000]
+        if "error" in output:
+            item["error"] = output["error"]
+        compacted.append(item)
+    return compacted
+
+
+def compact_history(history: list[dict[str, Any]]) -> list[dict[str, str]]:
+    result = []
+    for message in history[-12:]:
+        if not isinstance(message, dict) or message.get("role") not in {"user", "assistant"}:
+            continue
+        text = str(message.get("text", "")).strip()
+        if text:
+            result.append({"role": message["role"], "text": text[:4000]})
+    return result
 
 
 def create_client():

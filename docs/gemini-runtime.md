@@ -17,6 +17,9 @@ The Gemini runtime is a local Python service. Chrome never receives `GEMINI_API_
 - Output size comes from `GEMINI_MAX_OUTPUT_TOKENS`.
 - Agent rounds come from `LLM_REACT_MAX_ROUNDS`.
 - The runtime performs sequential calls.
+- Notebook context is compressed with a cell-count summary before prompting.
+- The last bounded conversation messages are included for continuity.
+- Sessions expire automatically and repeated tool failures stop the agent safely.
 
 ## Security
 
