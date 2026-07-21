@@ -104,7 +104,7 @@
         .header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; color: #d9e4f5; background: #202d40; cursor: move; user-select: none; }
         .title { font-size: 13px; font-weight: 700; } .subtitle { margin-top: 2px; color: #9badc4; font-size: 10px; }
         .header-actions { display: flex; align-items: center; gap: 6px; }
-        .panel-action, .close { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; color: #d9e4f5; background: transparent; border: 0; border-radius: 8px; font-size: 18px; cursor: pointer; }
+        .panel-action, .close { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; color: #d9e4f5; background: transparent; border: 0; border-radius: 8px; font-size: 18px; cursor: pointer; touch-action: manipulation; }
         .panel-action:hover, .close:hover { background: rgba(255,255,255,.1); }
         .history { position: absolute; top: 61px; right: 12px; z-index: 2; display: none; width: 245px; max-height: 260px; overflow: auto; padding: 6px; background: #172131; border: 1px solid #3b4c67; border-radius: 10px; box-shadow: 0 12px 28px rgba(0,0,0,.35); }
         .history.open { display: block; } .history-item { display: block; width: 100%; padding: 8px; overflow: hidden; color: #dce7f7; background: transparent; border: 0; border-radius: 7px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; font-size: 11px; } .history-item:hover, .history-item.active { background: #26344a; }
@@ -170,12 +170,32 @@
     shadowRoot.querySelector('.subtitle').textContent = 'Your local JupyterLab copilot';
     shadowRoot.querySelector('.messages .message').textContent = 'Connected to this notebook. Ask me to inspect, edit, or run a cell.';
 
-    toggle.addEventListener('click', () => { panel.classList.add('open'); toggle.classList.add('hidden'); });
-    close.addEventListener('click', () => { historyMenu.classList.remove('open'); panel.classList.remove('open'); toggle.classList.remove('hidden'); });
-    newChat.addEventListener('click', () => startNewConversation());
+    let suppressToggleClick = false;
+    toggle.addEventListener('click', event => {
+      event.stopPropagation();
+      if (suppressToggleClick) {
+        suppressToggleClick = false;
+        return;
+      }
+      panel.classList.add('open');
+      toggle.classList.add('hidden');
+    });
+    close.addEventListener('click', event => {
+      event.stopPropagation();
+      historyMenu.classList.remove('open');
+      panel.classList.remove('open');
+      toggle.classList.remove('hidden');
+    });
+    newChat.addEventListener('click', event => {
+      event.stopPropagation();
+      startNewConversation();
+    });
     historyToggle.addEventListener('click', () => {
       historyMenu.classList.toggle('open');
       if (historyMenu.classList.contains('open')) renderHistory();
+    });
+    [close, newChat, historyToggle].forEach(button => {
+      button.addEventListener('pointerdown', event => event.stopPropagation(), true);
     });
     textarea.addEventListener('keydown', event => {
       if (event.key === 'Enter' && !event.shiftKey) {
@@ -195,7 +215,30 @@
     });
 
     let dragState;
+    let toggleDragState;
+    toggle.addEventListener('pointerdown', event => {
+      event.stopPropagation();
+      toggleDragState = { startX: event.clientX, startY: event.clientY, moved: false };
+      toggle.setPointerCapture(event.pointerId);
+    });
+    toggle.addEventListener('pointermove', event => {
+      if (!toggleDragState) return;
+      const deltaX = event.clientX - toggleDragState.startX;
+      const deltaY = event.clientY - toggleDragState.startY;
+      if (Math.abs(deltaX) + Math.abs(deltaY) < 4) return;
+      toggleDragState.moved = true;
+      const rect = toggle.getBoundingClientRect();
+      toggle.style.left = `${Math.max(8, Math.min(window.innerWidth - rect.width - 8, event.clientX - rect.width / 2))}px`;
+      toggle.style.top = `${Math.max(8, Math.min(window.innerHeight - rect.height - 8, event.clientY - rect.height / 2))}px`;
+      toggle.style.right = 'auto';
+      toggle.style.bottom = 'auto';
+    });
+    toggle.addEventListener('pointerup', () => {
+      if (toggleDragState?.moved) suppressToggleClick = true;
+      toggleDragState = undefined;
+    });
     header.addEventListener('pointerdown', event => {
+      if (event.target.closest('button')) return;
       const rect = panel.getBoundingClientRect();
       dragState = { offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top };
       header.setPointerCapture(event.pointerId);
@@ -241,7 +284,11 @@
         button.className = `history-item${item.id === conversationId ? ' active' : ''}`;
         button.type = 'button';
         button.textContent = item.title || 'New conversation';
-        button.addEventListener('click', () => selectConversation(item.id));
+        button.addEventListener('click', event => {
+          event.stopPropagation();
+          selectConversation(item.id);
+        });
+        button.addEventListener('pointerdown', event => event.stopPropagation(), true);
         historyMenu.append(button);
       });
     }
