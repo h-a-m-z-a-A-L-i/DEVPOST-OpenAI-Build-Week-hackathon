@@ -68,7 +68,7 @@ class GeminiAgentTests(unittest.TestCase):
     def test_gemini_quota_defaults(self):
         client = GeminiClient()
 
-        self.assertEqual(client.min_interval, 2.0)
+        self.assertEqual(client.min_interval, 2.5)
         self.assertEqual(client.daily_request_limit, 1500)
         self.assertGreater(client.max_output_tokens, 0)
         self.assertLessEqual(client.max_output_tokens, 65536)

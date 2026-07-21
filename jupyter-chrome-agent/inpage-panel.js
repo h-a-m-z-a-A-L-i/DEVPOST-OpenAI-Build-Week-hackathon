@@ -9,6 +9,7 @@
   let conversation = [];
   let conversationId;
   let conversationSummaries = [];
+  let conversationSaveChain = Promise.resolve();
   let conversationTarget;
   let conversationTargetKey;
   let activeActivityMessage;
@@ -68,6 +69,7 @@
       activeComposer = undefined;
       conversation = [];
       conversationId = undefined;
+      conversationSaveChain = Promise.resolve();
       conversationSummaries = [];
       conversationTarget = undefined;
       conversationTargetKey = undefined;
@@ -254,6 +256,11 @@
     function startNewConversation() {
       conversationId = crypto.randomUUID();
       conversation = [];
+      activeActivityMessage?.remove();
+      activeActivityMessage = undefined;
+      activeResponseMessage?.remove();
+      activeResponseMessage = undefined;
+      activeComposer.disabled = false;
       renderConversation();
       historyMenu.classList.remove('open');
       void saveConversation();
@@ -312,6 +319,7 @@
   }
 
   function renderAgentStatus(status) {
+    if (status.conversationId && status.conversationId !== conversationId) return;
     const element = shadowRoot?.querySelector('.agent-status');
     if (!element) return;
     element.dataset.state = status.status;
@@ -375,12 +383,20 @@
 
   async function saveConversation() {
     if (!conversationTarget) return;
-    const response = await chrome.runtime.sendMessage({ type: 'save-conversation', target: conversationTarget, conversationId, messages: conversation });
-    if (response?.conversation) {
-      const index = conversationSummaries.findIndex(item => item.id === response.conversation.id);
-      if (index >= 0) conversationSummaries[index] = response.conversation;
-      else conversationSummaries.unshift(response.conversation);
-    }
+    const target = conversationTarget;
+    const id = conversationId;
+    const messages = conversation.slice();
+    const save = conversationSaveChain.catch(() => {}).then(async () => {
+      const response = await chrome.runtime.sendMessage({ type: 'save-conversation', target, conversationId: id, messages });
+      if (response?.conversation) {
+        const index = conversationSummaries.findIndex(item => item.id === response.conversation.id);
+        if (index >= 0) conversationSummaries[index] = response.conversation;
+        else conversationSummaries.unshift(response.conversation);
+      }
+      return response;
+    });
+    conversationSaveChain = save.catch(() => {});
+    return save;
   }
 
   async function getCurrentTarget() {
@@ -394,15 +410,18 @@
   }
 
   async function runAgent(prompt) {
+    const requestConversationId = conversationId;
     let response;
     try {
       response = await chrome.runtime.sendMessage({ type: 'agent-start', prompt, conversationId });
     } catch (error) {
+      if (conversationId !== requestConversationId) return;
       if (activeComposer) activeComposer.disabled = false;
       if (activeActivityMessage) activeActivityMessage.classList.add('error');
       addPanelMessage(error?.message || 'The extension service worker did not respond.', 'assistant');
       return;
     }
+    if (conversationId !== requestConversationId) return;
     if (activeComposer) activeComposer.disabled = false;
     if (!response?.ok) {
       if (activeActivityMessage) activeActivityMessage.classList.add('error');

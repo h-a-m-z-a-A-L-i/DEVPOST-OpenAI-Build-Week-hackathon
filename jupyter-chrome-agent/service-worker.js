@@ -56,14 +56,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message?.type === 'agent-start') {
-    notifyAgentStatus({ status: 'thinking' });
+    notifyAgentStatus({ status: 'thinking', conversationId: message.conversationId });
     runAgent(message.prompt, message.conversationId)
       .then(result => {
-        notifyAgentStatus({ status: 'complete' });
+        notifyAgentStatus({ status: 'complete', conversationId: message.conversationId });
         sendResponse({ ok: true, result });
       })
       .catch(error => {
-        notifyAgentStatus({ status: 'error', message: error.message });
+        notifyAgentStatus({ status: 'error', message: error.message, conversationId: message.conversationId });
         sendResponse({ ok: false, error: error.message });
       });
     return true;
@@ -245,7 +245,7 @@ async function runAgent(prompt, conversationId) {
     '/api/chat/start-stream',
     '/api/chat/start',
     { prompt, context, history },
-    text => notifyAgentStatus({ status: 'text_delta', text }),
+    text => notifyAgentStatus({ status: 'text_delta', text, conversationId }),
   );
   let rounds = 0;
 
@@ -258,6 +258,7 @@ async function runAgent(prompt, conversationId) {
     notifyAgentStatus({
       status: 'tool_call',
       tool: toolCalls.map(call => call.name).join(', '),
+      conversationId,
     });
     const toolResults = [];
     for (const toolCall of toolCalls) {
@@ -270,7 +271,7 @@ async function runAgent(prompt, conversationId) {
         sessionId: response.sessionId,
         toolResult: toolCalls.length === 1 ? toolResults[0] : { toolResults },
       },
-      text => notifyAgentStatus({ status: 'text_delta', text }),
+      text => notifyAgentStatus({ status: 'text_delta', text, conversationId }),
     );
   }
 

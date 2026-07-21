@@ -13,7 +13,7 @@ The Gemini runtime is a local Python service. Chrome never receives `GEMINI_API_
 ## Limits
 
 - Model comes from `GEMINI_MODEL`.
-- The runtime enforces 30 RPM with a 2-second minimum request interval.
+- The runtime uses a 2.5-second minimum request interval, staying safely below the 30 RPM limit.
 - The runtime enforces a process-local 1,500 RPD budget from `GEMINI_RPD`.
 - Output size defaults to 65,536 tokens and is capped by `GEMINI_MAX_OUTPUT_TOKENS`.
 - Notebook context supports an approximately 3.5-million-character budget from `LLM_CONTEXT_MAX_CHARS`.

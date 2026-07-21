@@ -18,7 +18,7 @@ class GeminiClient:
         self.api_key = os.environ.get("GEMINI_API_KEY", "")
         self.model = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
         self.max_output_tokens = min(int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "65536")), 65536)
-        self.min_interval = 2.0
+        self.min_interval = 2.5
         self.daily_request_limit = int(os.environ.get("GEMINI_RPD", "1500"))
         self._last_request = 0.0
         self._request_day = ""
@@ -125,7 +125,7 @@ class CodexClient:
         self.model = os.environ.get("CODEX_MODEL", "gpt-4.1-mini")
         self.base_url = os.environ.get("CODEX_BASE_URL", "https://api.openai.com/v1").rstrip("/")
         self.max_output_tokens = min(int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "65536")), 65536)
-        self.min_interval = 2.0
+        self.min_interval = 2.5
         self._last_request = 0.0
         self._lock = threading.Lock()
 
