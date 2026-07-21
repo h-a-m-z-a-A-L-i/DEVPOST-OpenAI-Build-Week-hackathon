@@ -12,9 +12,6 @@ FILES = [
     "service-worker.js",
     "tab-identity.js",
     "inpage-panel.js",
-    "sidepanel.html",
-    "sidepanel.js",
-    "sidepanel.css",
 ]
 
 

@@ -8,7 +8,7 @@ Base Chrome Manifest V3 extension for a local JupyterLab notebook agent.
 - Tracks the active Chrome tab and notebook route.
 - Extracts the active notebook name from JupyterLab's dock tab bar.
 - Provides a draggable in-page toggle panel inside the JupyterLab tab.
-- Keeps the Chrome side panel available as a secondary shell.
+- Injects the assistant UI directly into the active JupyterLab page.
 - Persists chat history per Chrome tab and notebook target.
 - Stores only validated extension settings through the service worker.
 - Resolves the active notebook name to a local path through the bridge.

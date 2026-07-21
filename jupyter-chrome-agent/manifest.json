@@ -2,9 +2,8 @@
   "manifest_version": 3,
   "name": "Jupyter Notebook Agent",
   "version": "0.2.0",
-  "description": "Chrome side panel for interacting with the active local JupyterLab notebook.",
+  "description": "Injected assistant panel for the active local JupyterLab notebook.",
   "permissions": [
-    "sidePanel",
     "storage",
     "tabs"
   ],
@@ -24,12 +23,6 @@
       "run_at": "document_idle"
     }
   ],
-  "action": {
-    "default_title": "Open Jupyter Notebook Agent"
-  },
-  "side_panel": {
-    "default_path": "sidepanel.html"
-  },
   "background": {
     "service_worker": "service-worker.js",
     "type": "module"

@@ -14,9 +14,6 @@ REQUIRED_FILES = [
     "manifest.json",
     "service-worker.js",
     "inpage-panel.js",
-    "sidepanel.html",
-    "sidepanel.js",
-    "sidepanel.css",
     "bridge/server.py",
     "runtime/server.py",
     "jupyterlab-bridge/src/index.ts",
@@ -71,7 +68,7 @@ def main() -> int:
             entries = set(package.namelist())
             expected = {
                 "manifest.json", "service-worker.js", "tab-identity.js",
-                "inpage-panel.js", "sidepanel.html", "sidepanel.js", "sidepanel.css",
+                "inpage-panel.js",
             }
             if entries != expected:
                 failures.append(f"archive entries differ from expected set: {sorted(entries)}")

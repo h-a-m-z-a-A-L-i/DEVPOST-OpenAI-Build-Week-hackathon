@@ -9,8 +9,6 @@ const AGENT_REQUEST_TIMEOUT_MS = 120000;
 const FRONTEND_TOOL_TIMEOUT_MS = 120000;
 const pendingFrontendRequests = new Map();
 
-chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
-
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (!changeInfo.url && tab.status !== 'complete') {
     return;
@@ -34,13 +32,6 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'get-target') {
     getTarget().then(target => sendResponse({ target }));
-    return true;
-  }
-
-  if (message?.type === 'set-panel-tab') {
-    chrome.sidePanel.setOptions({ tabId: message.tabId, enabled: true })
-      .then(() => sendResponse({ ok: true }))
-      .catch(error => sendResponse({ ok: false, error: error.message }));
     return true;
   }
 
@@ -169,7 +160,6 @@ async function updateTargetFromNotebookTab(tabId, notebookName) {
     detectedAt: new Date().toISOString(),
   };
   await chrome.storage.session.set({ [TARGET_KEY]: target });
-  await chrome.sidePanel.setOptions({ tabId, enabled: true });
   await resolveNotebookTarget(target);
 }
 
