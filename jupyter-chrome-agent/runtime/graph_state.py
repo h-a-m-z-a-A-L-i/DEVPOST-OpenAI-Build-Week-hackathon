@@ -13,6 +13,7 @@ class NotebookGraphState(TypedDict, total=False):
     conversation_id: str
     notebook_path: str
     user_request: str
+    tools: list[dict[str, Any]]
     notebook_context: dict[str, Any]
     history: list[dict[str, Any]]
     cell_plan: list[dict[str, Any]]
@@ -23,6 +24,10 @@ class NotebookGraphState(TypedDict, total=False):
     round_count: int
     request_count: int
     final_response: str
+    agent_session_id: str
+    streamed_text: str
+    on_text: Any
+    result: dict[str, Any]
     status: str
 
 
@@ -48,6 +53,7 @@ def build_initial_state(
     conversation_id: str,
     notebook_context: dict[str, Any],
     history: list[dict[str, Any]] | None = None,
+    tools: list[dict[str, Any]] | None = None,
 ) -> NotebookGraphState:
     """Build a clean state for a request without sharing mutable collections."""
 
@@ -64,6 +70,7 @@ def build_initial_state(
         "conversation_id": conversation_id,
         "notebook_path": notebook_path,
         "user_request": user_request,
+        "tools": list(tools or []),
         "notebook_context": dict(notebook_context),
         "history": list(history or []),
         "cell_plan": [],
@@ -74,6 +81,8 @@ def build_initial_state(
         "round_count": 0,
         "request_count": 0,
         "final_response": "",
+        "agent_session_id": "",
+        "streamed_text": "",
         "status": "ready",
     }
 

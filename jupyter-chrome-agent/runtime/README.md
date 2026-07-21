@@ -31,3 +31,9 @@ The dependency-light `graph_state.py` module defines the Phase 2 LangGraph state
 contract and creates a stable thread ID from the notebook path and conversation
 ID. The graph does not replace the existing agent loop until later phases; this
 keeps the current runtime behavior unchanged while the state contract is tested.
+
+`agent_graph.py` now adapts the existing ReAct loop to that state contract. Each
+graph invocation either completes the response or pauses at a frontend tool
+boundary; the next invocation resumes with the tool results. If LangGraph is not
+installed, the adapter uses the same node function directly so local development
+does not lose the existing behavior.
