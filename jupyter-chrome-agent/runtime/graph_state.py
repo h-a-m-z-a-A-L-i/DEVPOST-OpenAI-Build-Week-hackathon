@@ -17,6 +17,9 @@ class NotebookGraphState(TypedDict, total=False):
     notebook_context: dict[str, Any]
     history: list[dict[str, Any]]
     cell_plan: list[dict[str, Any]]
+    workflow_plan: list[dict[str, Any]]
+    active_stage_id: str
+    completed_stage_ids: list[str]
     pending_tool_calls: list[dict[str, Any]]
     tool_results: list[dict[str, Any]]
     execution_errors: list[dict[str, Any]]
@@ -74,6 +77,9 @@ def build_initial_state(
         "notebook_context": dict(notebook_context),
         "history": list(history or []),
         "cell_plan": [],
+        "workflow_plan": [],
+        "active_stage_id": "",
+        "completed_stage_ids": [],
         "pending_tool_calls": [],
         "tool_results": [],
         "execution_errors": [],

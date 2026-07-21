@@ -41,3 +41,7 @@ does not lose the existing behavior.
 `tool_planner.py` validates every model call against the tools exposed by the
 runtime, rejects malformed or duplicate calls, and classifies batches as
 read-only or ordered mutation work before they reach the frontend bridge.
+
+`workflow_graph.py` provides the notebook workflow layer: stages are validated
+for unique IDs, missing dependencies, and cycles; only dependency-ready stages
+can run; and each result can be marked completed or failed for safe resumption.
