@@ -17,8 +17,8 @@ class GeminiClient:
     def __init__(self) -> None:
         self.api_key = os.environ.get("GEMINI_API_KEY", "")
         self.model = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
-        self.max_output_tokens = int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "8192"))
-        self.min_interval = float(os.environ.get("GEMINI_REACT_MIN_INTERVAL_SEC", "4"))
+        self.max_output_tokens = min(int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "4096")), 4096)
+        self.min_interval = max(float(os.environ.get("GEMINI_REACT_MIN_INTERVAL_SEC", "4")), 4.0)
         self._last_request = 0.0
         self._lock = threading.Lock()
 
@@ -54,8 +54,8 @@ class CodexClient:
         self.api_key = os.environ.get("CODEX_API_KEY", "")
         self.model = os.environ.get("CODEX_MODEL", "gpt-4.1-mini")
         self.base_url = os.environ.get("CODEX_BASE_URL", "https://api.openai.com/v1").rstrip("/")
-        self.max_output_tokens = int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "8192"))
-        self.min_interval = float(os.environ.get("GEMINI_REACT_MIN_INTERVAL_SEC", "4"))
+        self.max_output_tokens = min(int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "4096")), 4096)
+        self.min_interval = max(float(os.environ.get("GEMINI_REACT_MIN_INTERVAL_SEC", "4")), 4.0)
         self._last_request = 0.0
         self._lock = threading.Lock()
 

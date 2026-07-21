@@ -180,6 +180,12 @@ async function getNotebookContext() {
     const live = await executeFrontendTool(target, { name: 'get_active_notebook', args: {} }, FRONTEND_IDENTITY_TIMEOUT_MS);
     if (live?.ok && live.result?.path) {
       liveNotebookPath = live.result.path;
+      if (Array.isArray(live.result.cells)) {
+        return {
+          ...live.result,
+          context: { maxChars: 60000, truncated: false, source: 'jupyterlab-live-model' },
+        };
+      }
     }
   } catch {
     // Fall back to filename resolution when the frontend bridge is unavailable.
