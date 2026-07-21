@@ -71,6 +71,17 @@ class NotebookParserTests(unittest.TestCase):
 
             self.assertEqual(len(matches), 2)
 
+    def test_root_notebook_returns_without_recursive_scan(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            direct = self.write_notebook(root, "direct.ipynb", [])
+            (root / "nested").mkdir()
+            self.write_notebook(root / "nested", "direct.ipynb", [])
+
+            matches = find_notebooks(root, "direct.ipynb")
+
+            self.assertEqual(matches, [direct])
+
     def test_exact_jupyter_path_disambiguates_duplicate_names(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -66,7 +66,7 @@ def find_notebooks(root: Path, notebook_name: str) -> list[Path]:
     target = Path(notebook_name).name.lower()
     direct_match = root / Path(notebook_name).name
     if direct_match.is_file():
-        matches.append(direct_match)
+        return [direct_match]
     for directory, child_directories, filenames in os.walk(root, followlinks=False, onerror=lambda _error: None):
         child_directories[:] = [
             child for child in child_directories
