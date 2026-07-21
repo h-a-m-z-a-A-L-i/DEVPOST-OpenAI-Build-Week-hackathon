@@ -49,3 +49,7 @@ can run; and each result can be marked completed or failed for safe resumption.
 `checkpoint_store.py` provides optional atomic SQLite persistence for graph state.
 `NotebookAgentGraph` can save each pause/result and resume a pending tool round
 after a runtime restart without persisting callbacks or response-only objects.
+
+`quota_manager.py` centralizes provider pacing and daily accounting. Gemini and
+the optional LangChain adapter default to `GEMINI_RPM=28` and `GEMINI_RPD=1400`;
+both can be overridden through environment variables without changing code.

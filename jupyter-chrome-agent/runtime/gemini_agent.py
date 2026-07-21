@@ -9,6 +9,7 @@ from typing import Any, Callable
 import requests
 
 from tool_planner import ToolPlanningError, validate_tool_calls
+from quota_manager import QuotaError, RequestQuota
 
 
 class GeminiError(RuntimeError):
@@ -20,29 +21,26 @@ class GeminiClient:
         self.api_key = os.environ.get("GEMINI_API_KEY", "")
         self.model = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
         self.max_output_tokens = min(int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "65536")), 65536)
-        self.min_interval = 60 / 28
+        self.requests_per_minute = int(os.environ.get("GEMINI_RPM", "28"))
         self.daily_request_limit = int(os.environ.get("GEMINI_RPD", "1400"))
-        self._last_request = 0.0
-        self._request_day = ""
-        self._daily_requests = 0
-        self._lock = threading.Lock()
+        self.quota = RequestQuota(self.requests_per_minute, self.daily_request_limit)
+        self.min_interval = self.quota.min_interval
 
     def generate(self, contents: list[dict[str, Any]], tools: list[dict[str, Any]]) -> dict[str, Any]:
         if not self.api_key:
             raise GeminiError("GEMINI_API_KEY is not configured.")
 
-        with self._lock:
-            self._reserve_request()
-            response = requests.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent",
-                params={"key": self.api_key},
-                json={
-                    "contents": contents,
-                    "tools": [{"function_declarations": tools}],
-                    "generationConfig": {"maxOutputTokens": self.max_output_tokens},
-                },
-                timeout=90,
-            )
+        self._reserve_request()
+        response = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent",
+            params={"key": self.api_key},
+            json={
+                "contents": contents,
+                "tools": [{"function_declarations": tools}],
+                "generationConfig": {"maxOutputTokens": self.max_output_tokens},
+            },
+            timeout=90,
+        )
 
         if not response.ok:
             raise GeminiError(format_provider_error("Gemini", response))
@@ -57,19 +55,18 @@ class GeminiClient:
         if not self.api_key:
             raise GeminiError("GEMINI_API_KEY is not configured.")
 
-        with self._lock:
-            self._reserve_request()
-            response = requests.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:streamGenerateContent",
-                params={"key": self.api_key, "alt": "sse"},
-                json={
-                    "contents": contents,
-                    "tools": [{"function_declarations": tools}],
-                    "generationConfig": {"maxOutputTokens": self.max_output_tokens},
-                },
-                stream=True,
-                timeout=90,
-            )
+        self._reserve_request()
+        response = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:streamGenerateContent",
+            params={"key": self.api_key, "alt": "sse"},
+            json={
+                "contents": contents,
+                "tools": [{"function_declarations": tools}],
+                "generationConfig": {"maxOutputTokens": self.max_output_tokens},
+            },
+            stream=True,
+            timeout=90,
+        )
 
         if not response.ok:
             raise GeminiError(format_provider_error("Gemini", response))
@@ -106,17 +103,10 @@ class GeminiClient:
         return {"candidates": [{"content": {"role": "model", "parts": parts}}]}
 
     def _reserve_request(self):
-        request_day = time.strftime("%Y-%m-%d", time.gmtime())
-        if request_day != self._request_day:
-            self._request_day = request_day
-            self._daily_requests = 0
-        if self._daily_requests >= self.daily_request_limit:
-            raise GeminiError("The daily Gemini request limit of 1,400 has been reached.")
-        wait = self.min_interval - (time.monotonic() - self._last_request)
-        if wait > 0:
-            time.sleep(wait)
-        self._last_request = time.monotonic()
-        self._daily_requests += 1
+        try:
+            self.quota.acquire()
+        except QuotaError as error:
+            raise GeminiError(str(error)) from error
 
 
 class CodexClient:

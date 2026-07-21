@@ -3,6 +3,7 @@ import os
 from typing import Any, Callable
 
 from gemini_agent import GeminiError
+from quota_manager import QuotaError, RequestQuota
 
 
 class LangChainGeminiClient:
@@ -16,6 +17,10 @@ class LangChainGeminiClient:
 
         self.max_output_tokens = min(int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "65536")), 65536)
         self.model_name = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
+        self.quota = RequestQuota(
+            int(os.environ.get("GEMINI_RPM", "28")),
+            int(os.environ.get("GEMINI_RPD", "1400")),
+        )
         self.model_factory = ChatGoogleGenerativeAI
         self.model = None
 
@@ -30,6 +35,7 @@ class LangChainGeminiClient:
         return self.model.bind_tools([tool_schema(tool) for tool in tools])
 
     def generate(self, contents: list[dict[str, Any]], tools: list[dict[str, Any]]) -> dict[str, Any]:
+        self._reserve_request()
         response = self._bound_model(tools).invoke(to_langchain_messages(contents))
         return normalize_response(response)
 
@@ -39,6 +45,7 @@ class LangChainGeminiClient:
         tools: list[dict[str, Any]],
         on_text: Callable[[str], None],
     ) -> dict[str, Any]:
+        self._reserve_request()
         accumulated = None
         for chunk in self._bound_model(tools).stream(to_langchain_messages(contents)):
             accumulated = chunk if accumulated is None else accumulated + chunk
@@ -48,6 +55,12 @@ class LangChainGeminiClient:
         if accumulated is None:
             raise GeminiError("LangChain returned an empty model response.")
         return normalize_response(accumulated)
+
+    def _reserve_request(self) -> None:
+        try:
+            self.quota.acquire()
+        except QuotaError as error:
+            raise GeminiError(str(error)) from error
 
 
 def tool_schema(tool: dict[str, Any]) -> dict[str, Any]:
