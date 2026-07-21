@@ -112,6 +112,16 @@
         .panel-action:hover, .close:hover { background: rgba(255,255,255,.1); }
         .history { position: absolute; top: 61px; right: 12px; z-index: 2; display: none; width: 245px; max-height: 260px; overflow: auto; padding: 6px; background: #172131; border: 1px solid #3b4c67; border-radius: 10px; box-shadow: 0 12px 28px rgba(0,0,0,.35); }
         .history.open { display: block; } .history-item { display: block; width: 100%; padding: 8px; overflow: hidden; color: #dce7f7; background: transparent; border: 0; border-radius: 7px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; font-size: 11px; } .history-item:hover, .history-item.active { background: #26344a; }
+        .progress-panel { display: none; align-items: center; gap: 9px; flex-shrink: 0; padding: 9px 10px; color: #b9cbea; background: rgba(42,61,87,.65); border: 1px solid rgba(127,157,196,.16); border-radius: 10px; font-size: 11px; }
+        .progress-panel.visible { display: flex; animation: progress-in .18s ease-out; }
+        .progress-orb { width: 9px; height: 9px; flex: none; border-radius: 50%; background: #73e59e; box-shadow: 0 0 0 0 rgba(115,229,158,.55); animation: progress-pulse 1.2s infinite; }
+        .progress-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .progress-dots { display: inline-flex; gap: 2px; margin-left: 2px; }
+        .progress-dots span { width: 3px; height: 3px; border-radius: 50%; background: currentColor; animation: progress-dot 1s infinite; }
+        .progress-dots span:nth-child(2) { animation-delay: .15s; } .progress-dots span:nth-child(3) { animation-delay: .3s; }
+        @keyframes progress-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(115,229,158,.5); } 50% { box-shadow: 0 0 0 6px rgba(115,229,158,0); } }
+        @keyframes progress-dot { 0%,60%,100% { opacity: .25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
+        @keyframes progress-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
         .body { display: flex; flex: 1; flex-direction: column; gap: 10px; padding: 12px; }
         .target { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px; overflow-wrap: anywhere; color: #9badc4; background: #101722; border-radius: 8px; font-size: 11px; }
         .agent-status { flex: none; color: #65d391; font-size: 10px; font-weight: 700; }
@@ -160,6 +170,19 @@
     historyMenu.className = 'history';
     historyMenu.setAttribute('role', 'menu');
     shadowRoot.querySelector('.panel').prepend(historyMenu);
+    const progressPanel = document.createElement('div');
+    progressPanel.className = 'progress-panel';
+    const progressOrb = document.createElement('span');
+    progressOrb.className = 'progress-orb';
+    const progressLabel = document.createElement('span');
+    progressLabel.className = 'progress-label';
+    const progressDots = document.createElement('span');
+    progressDots.className = 'progress-dots';
+    progressDots.innerHTML = '<span></span><span></span><span></span>';
+    progressLabel.textContent = 'Thinking';
+    progressLabel.append(progressDots);
+    progressPanel.append(progressOrb, progressLabel);
+    shadowRoot.querySelector('.body').prepend(progressPanel);
 
     const toggle = shadowRoot.querySelector('.toggle');
     const panel = shadowRoot.querySelector('.panel');
@@ -322,7 +345,21 @@
     if (status.conversationId && status.conversationId !== conversationId) return;
     const element = shadowRoot?.querySelector('.agent-status');
     if (!element) return;
+    const progressPanel = shadowRoot.querySelector('.progress-panel');
+    const progressLabel = shadowRoot.querySelector('.progress-label');
     element.dataset.state = status.status;
+    if (status.status === 'thinking') {
+      progressPanel.classList.add('visible');
+      progressLabel.firstChild.textContent = 'Analyzing notebook';
+    } else if (status.status === 'tool_call') {
+      progressPanel.classList.add('visible');
+      progressLabel.firstChild.textContent = `Using ${status.tool}`;
+    } else if (status.status === 'text_delta') {
+      progressPanel.classList.add('visible');
+      progressLabel.firstChild.textContent = 'Writing response';
+    } else if (status.status === 'complete' || status.status === 'error') {
+      progressPanel.classList.remove('visible');
+    }
     if (status.status === 'text_delta') {
       if (!activeResponseMessage) {
         activeActivityMessage?.remove();
