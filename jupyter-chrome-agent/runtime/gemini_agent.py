@@ -8,6 +8,8 @@ from typing import Any, Callable
 
 import requests
 
+from tool_planner import ToolPlanningError, validate_tool_calls
+
 
 class GeminiError(RuntimeError):
     pass
@@ -261,11 +263,10 @@ class NotebookAgent:
         parts = content.get("parts", [])
         function_calls = [part.get("functionCall") for part in parts if part.get("functionCall")]
         if function_calls:
-            if any(
-                not call.get("name") or not isinstance(call.get("args", {}), dict)
-                for call in function_calls
-            ):
-                raise GeminiError("The model returned an invalid tool call.")
+            try:
+                function_calls = validate_tool_calls(function_calls, session["tools"])
+            except ToolPlanningError as error:
+                raise GeminiError(str(error)) from error
             signature = json.dumps(function_calls, sort_keys=True, ensure_ascii=False)
             if signature == session.get("lastToolSignature"):
                 session["repeatedToolCalls"] += 1

@@ -37,3 +37,7 @@ graph invocation either completes the response or pauses at a frontend tool
 boundary; the next invocation resumes with the tool results. If LangGraph is not
 installed, the adapter uses the same node function directly so local development
 does not lose the existing behavior.
+
+`tool_planner.py` validates every model call against the tools exposed by the
+runtime, rejects malformed or duplicate calls, and classifies batches as
+read-only or ordered mutation work before they reach the frontend bridge.
