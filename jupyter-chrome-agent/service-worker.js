@@ -241,10 +241,15 @@ async function runAgent(prompt, conversationId) {
   target.conversationId = sanitizeConversationId(conversationId) || undefined;
   const context = await getNotebookContext();
   const history = await getConversationHistory(target);
-  let response = await postRuntimeStreamWithFallback(
-    '/api/chat/start-stream',
-    '/api/chat/start',
-    { prompt, context, history },
+  let response = await postRuntimeStream(
+    '/api/graph/start-stream',
+    {
+      prompt,
+      context,
+      history,
+      notebookPath: target.notebookPath || target.notebookName,
+      conversationId: target.conversationId || conversationId || 'default',
+    },
     text => notifyAgentStatus({ status: 'text_delta', text, conversationId }),
   );
   let rounds = 0;
@@ -264,12 +269,11 @@ async function runAgent(prompt, conversationId) {
     for (const toolCall of toolCalls) {
       toolResults.push(await executeFrontendTool(target, toolCall));
     }
-    response = await postRuntimeStreamWithFallback(
-      '/api/chat/continue-stream',
-      '/api/chat/continue',
+    response = await postRuntimeStream(
+      '/api/graph/continue-stream',
       {
-        sessionId: response.sessionId,
-        toolResult: toolCalls.length === 1 ? toolResults[0] : { toolResults },
+        graphState: response.graphState,
+        toolResults,
       },
       text => notifyAgentStatus({ status: 'text_delta', text, conversationId }),
     );
