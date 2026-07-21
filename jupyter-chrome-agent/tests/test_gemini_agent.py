@@ -47,6 +47,22 @@ class RepeatingToolClient:
         }
 
 
+class BatchedToolClient:
+    def __init__(self):
+        self.calls = 0
+
+    def generate(self, contents, tools):
+        self.calls += 1
+        if self.calls == 1:
+            return {
+                "candidates": [{"content": {"role": "model", "parts": [
+                    {"functionCall": {"name": "read_cell", "args": {"index": 0}}},
+                    {"functionCall": {"name": "read_cell_output", "args": {"index": 0}}},
+                ]}}]
+            }
+        return {"candidates": [{"content": {"role": "model", "parts": [{"text": "done"}]}}]}
+
+
 class GeminiAgentTests(unittest.TestCase):
     def test_agent_continues_after_tool_result(self):
         agent = NotebookAgent(FakeGeminiClient())
@@ -99,6 +115,8 @@ class GeminiAgentTests(unittest.TestCase):
         self.assertIn("one working stage per cell", prompt)
         self.assertIn("run affected cells in order", prompt)
 
+        self.assertIn("Batch independent read-only tool calls", prompt)
+
     def test_prompt_places_notebook_context_before_dynamic_history(self):
         prompt = build_prompt("What is this?", {"cells": []}, [{"role": "user", "text": "Earlier"}])
 
@@ -111,6 +129,20 @@ class GeminiAgentTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "repeating the list_cells tool call"):
             for _ in range(2):
                 pending = agent.continue_session(pending["sessionId"], {"ok": True, "cells": []})
+
+    def test_agent_batches_multiple_tool_calls(self):
+        agent = NotebookAgent(BatchedToolClient())
+        pending = agent.start("Inspect the first cell and its output.", {"cells": []}, NOTEBOOK_TOOLS)
+
+        self.assertEqual(len(pending["toolCalls"]), 2)
+        final = agent.continue_session(pending["sessionId"], {
+            "toolResults": [
+                {"ok": True, "cell": {"index": 0}},
+                {"ok": True, "outputs": []},
+            ]
+        })
+
+        self.assertEqual(final["text"], "done")
 
 
 if __name__ == "__main__":

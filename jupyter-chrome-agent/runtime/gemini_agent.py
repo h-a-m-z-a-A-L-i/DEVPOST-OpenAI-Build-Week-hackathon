@@ -202,18 +202,29 @@ class NotebookAgent:
             raise GeminiError("Agent session has no pending tool call.")
         if not isinstance(tool_result, dict):
             raise GeminiError("Tool result must be an object.")
-        if tool_result.get("ok") is False:
-            session["toolFailures"] += 1
-            session["lastToolSignature"] = None
-            session["repeatedToolCalls"] = 0
-            if session["toolFailures"] > self.max_tool_failures:
-                self.sessions.pop(session_id, None)
-                raise GeminiError("The agent stopped after repeated notebook tool failures.")
+        pending_calls = pending if isinstance(pending, list) else [pending]
+        tool_results = tool_result.get("toolResults")
+        if tool_results is None:
+            tool_results = [tool_result]
+        if not isinstance(tool_results, list) or len(tool_results) != len(pending_calls):
+            raise GeminiError("The number of tool results did not match the requested tool calls.")
+        response_parts = []
+        for call, result in zip(pending_calls, tool_results):
+            if not isinstance(result, dict):
+                raise GeminiError("Each tool result must be an object.")
+            if result.get("ok") is False:
+                session["toolFailures"] += 1
+                session["lastToolSignature"] = None
+                session["repeatedToolCalls"] = 0
+                if session["toolFailures"] > self.max_tool_failures:
+                    self.sessions.pop(session_id, None)
+                    raise GeminiError("The agent stopped after repeated notebook tool failures.")
+            response_parts.append({"functionResponse": {
+                "name": call["name"],
+                "response": {"result": result},
+            }})
 
-        session["contents"].append({
-            "role": "user",
-            "parts": [{"functionResponse": {"name": pending["name"], "response": {"result": tool_result}}}],
-        })
+        session["contents"].append({"role": "user", "parts": response_parts})
         session["pending"] = None
         try:
             return self._advance(session_id, on_text)
@@ -240,15 +251,14 @@ class NotebookAgent:
             raise GeminiError("The model returned an invalid response format.")
         session["contents"].append(content)
         parts = content.get("parts", [])
-        function_call = next((part.get("functionCall") for part in parts if part.get("functionCall")), None)
-        if function_call:
-            if not function_call.get("name") or not isinstance(function_call.get("args", {}), dict):
+        function_calls = [part.get("functionCall") for part in parts if part.get("functionCall")]
+        if function_calls:
+            if any(
+                not call.get("name") or not isinstance(call.get("args", {}), dict)
+                for call in function_calls
+            ):
                 raise GeminiError("The model returned an invalid tool call.")
-            signature = json.dumps(
-                {"name": function_call["name"], "args": function_call.get("args", {})},
-                sort_keys=True,
-                ensure_ascii=False,
-            )
+            signature = json.dumps(function_calls, sort_keys=True, ensure_ascii=False)
             if signature == session.get("lastToolSignature"):
                 session["repeatedToolCalls"] += 1
             else:
@@ -257,15 +267,18 @@ class NotebookAgent:
             if session["repeatedToolCalls"] >= 3:
                 self.sessions.pop(session_id, None)
                 raise GeminiError(
-                    f"The agent stopped after repeating the {function_call['name']} tool call."
+                    f"The agent stopped after repeating the {function_calls[0]['name']} tool call."
                 )
-            session["pending"] = function_call
-            return {
+            session["pending"] = function_calls
+            result = {
                 "status": "tool_call",
                 "sessionId": session_id,
                 "round": session["round"],
-                "toolCall": function_call,
+                "toolCall": function_calls[0],
             }
+            if len(function_calls) > 1:
+                result["toolCalls"] = function_calls
+            return result
 
         text = "\n".join(part.get("text", "") for part in parts if part.get("text"))
         if on_text is not None and not hasattr(self.client, "generate_stream") and text:
@@ -299,6 +312,10 @@ def build_prompt(prompt: str, context: dict[str, Any], history: list[dict[str, A
         "and use a short markdown heading cell when it clarifies a section. When modifying an existing large "
         "cell, preserve behavior while refactoring it into these separate working sections; do not create a "
         "monolithic replacement cell. After structural edits, run affected cells in order and report failures. "
+        "Plan the complete request before acting. Batch independent read-only tool calls in one response when "
+        "that is useful, avoid rereading the same cell, and use stable cell IDs. Keep dependent mutations ordered; "
+        "do not batch mutations whose later indexes or targets depend on earlier changes. For multi-cell workflows, "
+        "create the full section layout first, then populate and execute the sections in dependency order. "
         "Never invent tool results. If a tool fails, inspect the error and recover or explain the blocker.\n\n"
         f"Notebook context:\n{json.dumps(context, ensure_ascii=False)}\n\n"
         f"Recent conversation:\n{memory_text}\n\n"

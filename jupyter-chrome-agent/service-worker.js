@@ -253,11 +253,21 @@ async function runAgent(prompt, conversationId) {
     if (rounds > MAX_AGENT_ROUNDS) {
       throw new Error('The agent reached its tool-call limit.');
     }
-    notifyAgentStatus({ status: 'tool_call', tool: response.toolCall.name });
-    const toolResult = await executeFrontendTool(target, response.toolCall);
+    const toolCalls = Array.isArray(response.toolCalls) ? response.toolCalls : [response.toolCall];
+    notifyAgentStatus({
+      status: 'tool_call',
+      tool: toolCalls.map(call => call.name).join(', '),
+    });
+    const toolResults = [];
+    for (const toolCall of toolCalls) {
+      toolResults.push(await executeFrontendTool(target, toolCall));
+    }
     response = await postRuntimeStream(
       '/api/chat/continue-stream',
-      { sessionId: response.sessionId, toolResult },
+      {
+        sessionId: response.sessionId,
+        toolResult: toolCalls.length === 1 ? toolResults[0] : { toolResults },
+      },
       text => notifyAgentStatus({ status: 'text_delta', text }),
     );
   }
