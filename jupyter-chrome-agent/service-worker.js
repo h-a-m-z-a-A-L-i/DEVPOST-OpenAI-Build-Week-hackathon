@@ -57,7 +57,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message?.type === 'agent-start') {
     notifyAgentStatus({ status: 'thinking' });
-    runAgent(message.prompt)
+    runAgent(message.prompt, message.conversationId)
       .then(result => {
         notifyAgentStatus({ status: 'complete' });
         sendResponse({ ok: true, result });
@@ -104,16 +104,40 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message?.type === 'get-conversation') {
     const key = conversationKey(message.target);
-    chrome.storage.local.get(key)
-      .then(result => sendResponse({ ok: true, messages: result[key] ?? [] }));
+    getConversationStore(message.target).then(store => {
+      const conversation = store.conversations.find(item => item.id === message.conversationId)
+        ?? store.conversations[0];
+      sendResponse({ ok: true, conversation: conversation ?? null, store });
+    });
+    return true;
+  }
+
+  if (message?.type === 'get-conversations') {
+    getConversationStore(message.target)
+      .then(store => sendResponse({ ok: true, store }));
     return true;
   }
 
   if (message?.type === 'save-conversation') {
     const key = conversationKey(message.target);
     const messages = sanitizeMessages(message.messages);
-    chrome.storage.local.set({ [key]: messages })
-      .then(() => sendResponse({ ok: true }));
+    getConversationStore(message.target).then(store => {
+      const id = sanitizeConversationId(message.conversationId) || crypto.randomUUID();
+      const existing = store.conversations.find(item => item.id === id);
+      const firstUserMessage = messages.find(item => item.role === 'user');
+      const next = {
+        id,
+        title: firstUserMessage?.text?.slice(0, 80) || existing?.title || 'New conversation',
+        messages,
+        createdAt: existing?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      const conversations = existing
+        ? store.conversations.map(item => item.id === id ? next : item)
+        : [next, ...store.conversations];
+      return chrome.storage.local.set({ [key]: { version: 1, conversations } })
+        .then(() => sendResponse({ ok: true, conversation: next }));
+    });
     return true;
   }
 
@@ -208,12 +232,13 @@ async function getNotebookContext() {
   return payload.notebook;
 }
 
-async function runAgent(prompt) {
+async function runAgent(prompt, conversationId) {
   if (typeof prompt !== 'string' || !prompt.trim()) {
     throw new Error('A non-empty prompt is required.');
   }
 
   const target = await getTarget();
+  target.conversationId = sanitizeConversationId(conversationId) || undefined;
   const context = await getNotebookContext();
   const history = await getConversationHistory(target);
   let response = await postRuntime('/api/chat/start', { prompt, context, history });
@@ -236,13 +261,10 @@ async function runAgent(prompt) {
 }
 
 async function getConversationHistory(target) {
-  try {
-    const key = conversationKey(target);
-    const result = await chrome.storage.local.get(key);
-    return Array.isArray(result[key]) ? result[key].slice(-12) : [];
-  } catch {
-    return [];
-  }
+  const store = await getConversationStore(target);
+  const conversation = store.conversations.find(item => item.id === target.conversationId)
+    ?? store.conversations[0];
+  return conversation?.messages?.slice(-12) ?? [];
 }
 
 function notifyAgentStatus(payload) {
@@ -335,11 +357,56 @@ async function forwardFrontendRequest(request) {
 }
 
 function conversationKey(target) {
-  const notebookName = target?.notebookName ?? target?.notebookPath;
-  if (!target?.tabId || !target?.origin || !notebookName) {
+  const notebookIdentity = target?.localPath ?? target?.notebookPath ?? target?.notebookName;
+  if (!target?.tabId || !target?.origin || !notebookIdentity) {
     throw new Error('A complete notebook target is required.');
   }
-  return `conversation:${target.tabId}:${target.origin}:${notebookName}`;
+  return `conversation:${target.origin}:${notebookIdentity}`;
+}
+
+async function getConversationStore(target) {
+  try {
+    const key = conversationKey(target);
+    const result = await chrome.storage.local.get(key);
+    let stored = result[key];
+    if (stored === undefined && target?.tabId && target?.origin) {
+      const oldName = target.notebookName ?? target.notebookPath;
+      const legacyKey = oldName
+        ? `conversation:${target.tabId}:${target.origin}:${oldName}`
+        : undefined;
+      if (legacyKey) {
+        const legacyResult = await chrome.storage.local.get(legacyKey);
+        stored = legacyResult[legacyKey];
+      }
+    }
+    if (stored && stored.version === 1 && Array.isArray(stored.conversations)) {
+      return stored;
+    }
+    if (Array.isArray(stored) && stored.length) {
+      const migrated = {
+        version: 1,
+        conversations: [{
+          id: 'legacy',
+          title: stored.find(item => item?.role === 'user')?.text?.slice(0, 80) || 'Previous conversation',
+          messages: sanitizeMessages(stored),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }],
+      };
+      await chrome.storage.local.set({ [key]: migrated });
+      return migrated;
+    }
+    return { version: 1, conversations: [] };
+  } catch {
+    return { version: 1, conversations: [] };
+  }
+}
+
+function sanitizeConversationId(value) {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return value.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
 }
 
 async function resolveNotebookTarget(target) {
