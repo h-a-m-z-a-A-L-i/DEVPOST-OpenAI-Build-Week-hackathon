@@ -2,28 +2,29 @@
 
 ## Automated checks
 
-- [ ] `npm install`
-- [ ] `npm run check-types`
-- [ ] `npm run lint`
-- [ ] `npm run compile`
-- [ ] `npm run package`
-- [ ] `npm test` completes in the local VS Code environment
+- [ ] `python -m unittest discover -s jupyter-chrome-agent/tests -v`
+- [ ] Python compilation passes for bridge, runtime, and server extension.
+- [ ] `node --check` passes for extension scripts.
+- [ ] JupyterLab bridge `npm run check-types` and `npm run build` pass.
+- [ ] `python jupyter-chrome-agent/scripts/validate_notebooks.py "Test notebook" --json` passes.
+- [ ] `python jupyter-chrome-agent/scripts/package_extension.py` creates the archive.
+- [ ] The archive contains no `.env`, token, API key, `node_modules`, or generated logs.
 
 ## Manual smoke test
 
-- [ ] Launch the Extension Development Host with `F5`.
-- [ ] Open a copy of a real `.ipynb` notebook.
-- [ ] Open the NotebookPilot Activity Bar view.
-- [ ] Run, insert, edit, and delete a selected cell.
-- [ ] Use `@notebook` to inspect a cell and its output.
-- [ ] Confirm deletion requires approval.
-- [ ] Confirm a failed operation reports its error and does not silently continue.
-- [ ] Confirm the notebook remains usable after cancellation.
+- [ ] Start JupyterLab at `http://localhost:8888/lab`.
+- [ ] Confirm the server extension starts ports `8765` and `8766`.
+- [ ] Reload the unpacked Chrome extension and open a `.ipynb` notebook.
+- [ ] Confirm the floating panel appears only for notebook tabs.
+- [ ] Ask the agent to inspect cells and outputs.
+- [ ] Test insert, edit, delete, search, clear output, inspect error, and run-cell tools.
+- [ ] Confirm kernel-busy and failed-cell errors are visible and recoverable.
+- [ ] Confirm changes appear in JupyterLab without a page refresh.
 
-## Collaboration and packaging
+## Submission evidence
 
-- [ ] Fetch `origin/main` before committing.
-- [ ] Keep test notebook outputs out of feature commits.
-- [ ] Review `git diff --check`.
+- [ ] Capture architecture and workflow screenshots.
+- [ ] Record execution traces and validation metrics.
+- [ ] Record the final demonstration video.
+- [ ] Finalize Devpost description, installation steps, and limitations.
 - [ ] Push only focused commits to `main`.
-- [ ] Attach benchmark results and demo evidence to the release notes.
