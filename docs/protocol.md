@@ -136,5 +136,6 @@ The URL may be checked for page scope, but it must not be used to infer notebook
 - Kernel execution has a separate execution timeout.
 - The agent has a maximum number of rounds.
 - Source and output payloads have maximum sizes.
-- Gemini requests are sequential and respect the configured 15 requests/minute limit.
+- Gemini requests respect 30 RPM with a 2-second minimum interval and a 1,500-request daily runtime budget.
+- Independent tool calls may be batched; dependent notebook mutations remain ordered.
 - A timeout may be retried only when the error is marked retryable.

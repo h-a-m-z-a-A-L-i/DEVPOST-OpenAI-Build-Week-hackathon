@@ -25,10 +25,10 @@ The existing `/api/notebook` endpoint remains available for direct notebook pars
 
 ## Context Limits
 
-- Cell source is limited to 12,000 characters.
-- Text output is limited to 8,000 characters.
-- Structured output larger than 8,000 characters receives an omission marker and preview.
-- The context target is 60,000 characters.
+- Cell source is limited to 24,000 characters.
+- Text output is limited to 16,000 characters during notebook parsing.
+- The runtime may further compact output before sending it to Gemini.
+- The context target is approximately 3,500,000 characters, leaving room within the 1,048,576-token model window.
 - Omitted content is marked with `...[truncated]` or an `omitted` object.
 
 The response includes:
@@ -36,7 +36,7 @@ The response includes:
 ```json
 {
   "context": {
-    "maxChars": 60000,
+    "maxChars": 3500000,
     "truncated": false
   }
 }
