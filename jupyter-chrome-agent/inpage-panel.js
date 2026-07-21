@@ -101,7 +101,7 @@
         .toggle { display: grid; place-items: center; width: 48px; height: 48px; padding: 0; border-radius: 50%; color: #07110b; background: #65d391; border: 0; font-size: 20px; font-weight: 800; cursor: pointer; }
         .panel { display: none; width: 320px; height: 410px; overflow: hidden; border-radius: 14px; flex-direction: column; }
         .panel.open { display: flex; } .toggle.hidden { display: none; }
-        .header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; color: #d9e4f5; background: #202d40; cursor: move; user-select: none; }
+        .header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; color: #d9e4f5; background: #202d40; user-select: none; }
         .title { font-size: 13px; font-weight: 700; } .subtitle { margin-top: 2px; color: #9badc4; font-size: 10px; }
         .header-actions { display: flex; align-items: center; gap: 6px; }
         .panel-action, .close { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; color: #d9e4f5; background: transparent; border: 0; border-radius: 8px; font-size: 18px; cursor: pointer; touch-action: manipulation; }
@@ -170,13 +170,8 @@
     shadowRoot.querySelector('.subtitle').textContent = 'Your local JupyterLab copilot';
     shadowRoot.querySelector('.messages .message').textContent = 'Connected to this notebook. Ask me to inspect, edit, or run a cell.';
 
-    let suppressToggleClick = false;
     toggle.addEventListener('click', event => {
       event.stopPropagation();
-      if (suppressToggleClick) {
-        suppressToggleClick = false;
-        return;
-      }
       panel.classList.add('open');
       toggle.classList.add('hidden');
     });
@@ -214,42 +209,6 @@
       void runAgent(text);
     });
 
-    let dragState;
-    let toggleDragState;
-    toggle.addEventListener('pointerdown', event => {
-      event.stopPropagation();
-      toggleDragState = { startX: event.clientX, startY: event.clientY, moved: false };
-      toggle.setPointerCapture(event.pointerId);
-    });
-    toggle.addEventListener('pointermove', event => {
-      if (!toggleDragState) return;
-      const deltaX = event.clientX - toggleDragState.startX;
-      const deltaY = event.clientY - toggleDragState.startY;
-      if (Math.abs(deltaX) + Math.abs(deltaY) < 4) return;
-      toggleDragState.moved = true;
-      const rect = toggle.getBoundingClientRect();
-      toggle.style.left = `${Math.max(8, Math.min(window.innerWidth - rect.width - 8, event.clientX - rect.width / 2))}px`;
-      toggle.style.top = `${Math.max(8, Math.min(window.innerHeight - rect.height - 8, event.clientY - rect.height / 2))}px`;
-      toggle.style.right = 'auto';
-      toggle.style.bottom = 'auto';
-    });
-    toggle.addEventListener('pointerup', () => {
-      if (toggleDragState?.moved) suppressToggleClick = true;
-      toggleDragState = undefined;
-    });
-    header.addEventListener('pointerdown', event => {
-      if (event.target.closest('button')) return;
-      const rect = panel.getBoundingClientRect();
-      dragState = { offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top };
-      header.setPointerCapture(event.pointerId);
-    });
-    header.addEventListener('pointermove', event => {
-      if (!dragState) return;
-      panel.style.left = `${Math.max(8, Math.min(window.innerWidth - panel.offsetWidth - 8, event.clientX - dragState.offsetX))}px`;
-      panel.style.top = `${Math.max(8, Math.min(window.innerHeight - panel.offsetHeight - 8, event.clientY - dragState.offsetY))}px`;
-      panel.style.right = 'auto'; panel.style.bottom = 'auto';
-    });
-    header.addEventListener('pointerup', () => { dragState = undefined; });
 
     function addMessage(text, role) {
       const message = document.createElement('div');

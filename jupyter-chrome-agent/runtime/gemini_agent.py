@@ -19,7 +19,7 @@ class GeminiClient:
         self.api_key = os.environ.get("GEMINI_API_KEY", "")
         self.model = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
         self.max_output_tokens = min(int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "4096")), 4096)
-        self.min_interval = max(float(os.environ.get("GEMINI_REACT_MIN_INTERVAL_SEC", "4")), 4.0)
+        self.min_interval = 4.0
         self._last_request = 0.0
         self._lock = threading.Lock()
 
@@ -31,6 +31,8 @@ class GeminiClient:
             wait = self.min_interval - (time.monotonic() - self._last_request)
             if wait > 0:
                 time.sleep(wait)
+            request_started = time.monotonic()
+            self._last_request = request_started
             response = requests.post(
                 f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent",
                 params={"key": self.api_key},
@@ -41,7 +43,6 @@ class GeminiClient:
                 },
                 timeout=90,
             )
-            self._last_request = time.monotonic()
 
         if not response.ok:
             raise GeminiError(format_provider_error("Gemini", response))
@@ -56,7 +57,7 @@ class CodexClient:
         self.model = os.environ.get("CODEX_MODEL", "gpt-4.1-mini")
         self.base_url = os.environ.get("CODEX_BASE_URL", "https://api.openai.com/v1").rstrip("/")
         self.max_output_tokens = min(int(os.environ.get("GEMINI_MAX_OUTPUT_TOKENS", "4096")), 4096)
-        self.min_interval = max(float(os.environ.get("GEMINI_REACT_MIN_INTERVAL_SEC", "4")), 4.0)
+        self.min_interval = 4.0
         self._last_request = 0.0
         self._lock = threading.Lock()
 
@@ -68,6 +69,8 @@ class CodexClient:
             wait = self.min_interval - (time.monotonic() - self._last_request)
             if wait > 0:
                 time.sleep(wait)
+            request_started = time.monotonic()
+            self._last_request = request_started
             response = requests.post(
                 f"{self.base_url}/chat/completions",
                 headers={"Authorization": f"Bearer {self.api_key}"},
@@ -79,7 +82,6 @@ class CodexClient:
                 },
                 timeout=90,
             )
-            self._last_request = time.monotonic()
 
         if not response.ok:
             raise GeminiError(format_provider_error("Codex", response))
