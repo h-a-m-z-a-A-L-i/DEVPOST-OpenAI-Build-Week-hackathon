@@ -404,6 +404,9 @@ def compact_history(history: list[dict[str, Any]]) -> list[dict[str, str]]:
 
 def create_client():
     provider = os.environ.get("LLM_PROVIDER", "gemini").strip().lower()
+    if provider == "langchain":
+        from langchain_client import LangChainGeminiClient
+        return LangChainGeminiClient()
     if provider in {"codex", "openai"}:
         return CodexClient()
     return GeminiClient()

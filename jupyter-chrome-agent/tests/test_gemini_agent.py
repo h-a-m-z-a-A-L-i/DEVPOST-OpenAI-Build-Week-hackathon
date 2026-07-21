@@ -8,6 +8,7 @@ RUNTIME_PATH = Path(__file__).parents[1] / "runtime"
 sys.path.insert(0, str(RUNTIME_PATH))
 
 from gemini_agent import GeminiClient, NotebookAgent, build_prompt, compress_context, normalize_codex_response  # noqa: E402
+from langchain_client import normalize_response, tool_schema  # noqa: E402
 from tool_contracts import NOTEBOOK_TOOLS  # noqa: E402
 
 
@@ -72,6 +73,26 @@ class GeminiAgentTests(unittest.TestCase):
         self.assertEqual(client.daily_request_limit, 1400)
         self.assertGreater(client.max_output_tokens, 0)
         self.assertLessEqual(client.max_output_tokens, 65536)
+
+    def test_langchain_adapter_preserves_tool_contract(self):
+        schema = tool_schema({
+            "name": "read_cell",
+            "description": "Read a cell.",
+            "parameters": {"type": "object", "properties": {"index": {"type": "integer"}}},
+        })
+
+        self.assertEqual(schema["function"]["name"], "read_cell")
+        self.assertEqual(schema["function"]["parameters"]["type"], "object")
+
+    def test_langchain_adapter_normalizes_text_and_tools(self):
+        class ModelResponse:
+            content = "Structured answer"
+            tool_calls = [{"name": "read_cell", "args": {"index": 0}}]
+
+        normalized = normalize_response(ModelResponse())
+
+        self.assertEqual(normalized["candidates"][0]["content"]["parts"][0]["text"], "Structured answer")
+        self.assertEqual(normalized["candidates"][0]["content"]["parts"][1]["functionCall"]["name"], "read_cell")
 
     def test_agent_continues_after_tool_result(self):
         agent = NotebookAgent(FakeGeminiClient())

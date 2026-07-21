@@ -22,3 +22,7 @@ The start endpoint returns either a final response or a pending Gemini function 
 Gemini is the default provider. Set `LLM_PROVIDER=codex`, `CODEX_API_KEY`, and
 optionally `CODEX_MODEL` and `CODEX_BASE_URL` to use an OpenAI-compatible
 Codex gateway. Credentials remain local to the Python runtime.
+
+Set `LLM_PROVIDER=langchain` to use the optional LangChain Gemini adapter. Install
+`runtime/requirements.txt` first. The adapter preserves the existing tool and
+streaming contracts; the default provider remains the direct Gemini client.
